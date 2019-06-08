@@ -12,6 +12,7 @@ import multiprocessing as mp
 import os
 import re
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 from bert import run_classifier, modeling, optimization, tokenization
@@ -27,7 +28,7 @@ def main():
     """ Run predictions for an entire directory of tfrecords with a stored BERT model
 
     Usage:
-      bert_classify_tfrc.py --config=config_file [--tpu_name=name]
+      bert_train.py --config=config_file [--tpu_name=name]
 
     Options:
       -h --help                 Show this screen.
@@ -85,38 +86,131 @@ def main():
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
-    tpu_cluster_resolver = None
+    # Train the model: Uses all training sets in the GCS bucket
+    # - anything labeled 'training/*.csv'
+
+    processor = ClassificationTrainingProcessor(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
+                                                cfg.CLASSIFICATION_CATEGORIES, cfg.ID_FIELD,
+                                                cfg.TEXT_FIELDS, cfg.VOCAB_FILE, cfg.MAX_SEQUENCE_LENGTH,
+                                                cfg.DO_LOWER_CASE)
+
+    label_list = processor.get_labels()
+    train_examples = processor.get_train_examples()
+
+    num_train_steps = int(
+        len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
+    num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
+
+    estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
+
+    tf.logging.info('Training on BERT base model. This usually takes < 5 minutes. Please wait...')
+    t0 = datetime.datetime.now()
+
+    tf.logging.info('***** Started training at {} *****'.format(t0))
+    tf.logging.info('  Num examples = {}'.format(len(train_examples)))
+    tf.logging.info('  Batch size = {}'.format(cfg.TRAIN_BATCH_SIZE))
+    tf.logging.info("  Num steps = %d", num_train_steps)
+    train_input_fn = run_classifier.input_fn_builder(
+        features=train_examples,
+        seq_length=cfg.MAX_SEQ_LENGTH,
+        is_training=True,
+        drop_remainder=True)
+    estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
+    t1 = datetime.datetime.now()
+    tf.logging.info('***** Finished training at {}; {} total time *****'.format(t1, t1 - t0))
+
+    # Eval the model.
+    eval_examples = processor.get_dev_examples()
+
+    t0 = datetime.datetime.now()
+    tf.logging.info('***** Started evaluation at {} *****'.format(t0))
+    tf.logging.info('  Num examples = {}'.format(len(eval_examples)))
+    tf.logging.info('  Batch size = {}'.format(cfg.EVAL_BATCH_SIZE))
+
     if use_tpu:
-        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
-    run_config = tf.contrib.tpu.RunConfig(
-        cluster=tpu_cluster_resolver,
-        model_dir=cfg.OUTPUT_DIR,
-        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-        tpu_config=tf.contrib.tpu.TPUConfig(
-            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-            num_shards=cfg.NUM_TPU_CORES,
-            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
+        tf.logging.warn("Eval will be slightly WRONG on the TPU because it will truncate the last batch.")
+    eval_steps = int(len(eval_examples) / cfg.EVAL_BATCH_SIZE)
+    eval_input_fn = run_classifier.input_fn_builder(
+        features=eval_examples,
+        seq_length=cfg.MAX_SEQ_LENGTH,
+        is_training=False,
+        drop_remainder=True)
+    result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
 
-    model_fn = model_fn_builder(
-        bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
-        num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
-        init_checkpoint=cfg.INIT_CHECKPOINT,
-        learning_rate=cfg.LEARNING_RATE,
-        num_train_steps=-1,
-        num_warmup_steps=-1,
-        use_tpu=use_tpu,
-        use_one_hot_embeddings=True)
+    t1 = datetime.datetime.now()
+    tf.logging.info('***** Finished evaluation at {}; {} total time *****'.format(t1, t1 - t0))
 
-    # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
-    estimator = tf.contrib.tpu.TPUEstimator(
-        use_tpu=use_tpu,
-        model_fn=model_fn,
-        config=run_config,
-        train_batch_size=cfg.TRAIN_BATCH_SIZE,
-        eval_batch_size=cfg.EVAL_BATCH_SIZE,
-        predict_batch_size=cfg.PREDICT_BATCH_SIZE)
+    output_eval_file = os.path.join(cfg.OUTPUT_DIR, "eval_results.txt")
+    with tf.gfile.GFile(output_eval_file, "w") as writer:
+        tf.logging.info("***** Eval results *****")
+        for key in sorted(result.keys()):
+            tf.logging.info('  {} = {}'.format(key, str(result[key])))
+            writer.write("%s = %s\n" % (key, str(result[key])))
 
-    # TODO: INSERT CODE TO TRAIN MODEL HERE
+    # Run predictions on test data
+    test_examples = processor.get_test_examples()
+
+    t0 = datetime.datetime.now()
+    print('***** Started test predictions at {} *****'.format(t0))
+
+    tf.logging.info("  Num examples = %d", len(test_examples))
+    tf.logging.info("  Batch size = %d", cfg.PREDICT_BATCH_SIZE)
+
+    # Warning: According to tpu_estimator.py Prediction on TPU is an
+    # experimental feature and hence not supported here
+    #  raise ValueError("Prediction in TPU not supported")
+
+    test_drop_remainder = True
+
+    test_input_fn = run_classifier.input_fn_builder(
+        features=test_examples,
+        seq_length=cfg.MAX_SEQ_LENGTH,
+        is_training=False,
+        drop_remainder=test_drop_remainder)
+
+    result = estimator.predict(input_fn=test_input_fn)
+
+    t1 = datetime.datetime.now()
+
+    output_test_file = os.path.join(cfg.OUTPUT_DIR, "test_results.tsv")
+
+    results = []
+    with tf.gfile.GFile(output_test_file, "w") as writer:
+        tf.logging.info("***** Test results *****")
+        for prediction in result:
+            results.append({'predicted_class': np.argmax(prediction['probabilities']),
+                            'predicted_class_label': label_list[np.argmax(prediction['probabilities'])],
+                            'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
+            output_line = "\t".join(
+                str(class_probability) for class_probability in prediction) + "\n"
+            writer.write(output_line)
+
+    print('***** Finished test predictions at {}; {} total time *****'.format(t1, t1 - t0))
+
+    predictions = np.array([p['predicted_class'] for p in results])
+    label_ids = np.array([x.label_id for x in test_examples])
+
+    if len(predictions) < len(label_ids):
+        label_ids = label_ids[:len(predictions)]
+
+    confusion_matrix = tf.confusion_matrix(label_ids, predictions, num_classes=len(label_list), name="tests")
+
+    with tf.Session():
+        tf.logging.info(
+            'Confusion Matrix: \n\n {}'.format(tf.Tensor.eval(confusion_matrix, feed_dict=None, session=None)))
+
+    from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
+
+    y_pred = predictions
+    y_true = label_ids
+
+    tf.logging.info("accuracy: {}".format(accuracy_score(y_true, y_pred)))
+    for av in ['micro', 'macro', 'weighted']:
+        tf.logging.info("f1 ({}): {}".format(av, f1_score(y_true, y_pred, average=av)))
+        tf.logging.info("recall ({}): {}".format(av, recall_score(y_true, y_pred, average=av)))
+        tf.logging.info("precision ({}): {}".format(av, precision_score(y_true, y_pred, average=av)))
+
+    ## TODO: Add code to predict on live data and output a sample for validation or training
 
 
 def convert_numeric_label_to_string(x, list_of_categories):
@@ -493,6 +587,39 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
         return output_spec
 
     return model_fn
+
+
+def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1):
+    tpu_cluster_resolver = None
+    if use_tpu:
+        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
+    run_config = tf.contrib.tpu.RunConfig(
+        cluster=tpu_cluster_resolver,
+        model_dir=cfg.OUTPUT_DIR,
+        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+        tpu_config=tf.contrib.tpu.TPUConfig(
+            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
+            num_shards=cfg.NUM_TPU_CORES,
+            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
+    model_fn = model_fn_builder(
+        bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
+        num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
+        init_checkpoint=cfg.INIT_CHECKPOINT,
+        learning_rate=cfg.LEARNING_RATE,
+        num_train_steps=num_train_steps,
+        num_warmup_steps=num_warmup_steps,
+        use_tpu=use_tpu,
+        use_one_hot_embeddings=True)
+    # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
+    estimator = tf.contrib.tpu.TPUEstimator(
+        use_tpu=use_tpu,
+        model_fn=model_fn,
+        config=run_config,
+        train_batch_size=cfg.TRAIN_BATCH_SIZE,
+        eval_batch_size=cfg.EVAL_BATCH_SIZE,
+        predict_batch_size=cfg.PREDICT_BATCH_SIZE)
+    return estimator
+
 
 
 if __name__ == '__main__':

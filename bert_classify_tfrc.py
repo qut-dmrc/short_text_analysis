@@ -10,11 +10,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from bert import modeling
 from bert.run_classifier import file_based_input_fn_builder
 from docopt import docopt
 
-from bert_train import model_fn_builder
+from bert_train import define_model
 from cloud_utils import read_df_gcs, save_df_gcs, setup_logging_local
 
 
@@ -84,36 +83,7 @@ def main():
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
-    tpu_cluster_resolver = None
-    if use_tpu:
-        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
-    run_config = tf.contrib.tpu.RunConfig(
-        cluster=tpu_cluster_resolver,
-        model_dir=cfg.OUTPUT_DIR,
-        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-        tpu_config=tf.contrib.tpu.TPUConfig(
-            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-            num_shards=cfg.NUM_TPU_CORES,
-            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
-
-    model_fn = model_fn_builder(
-        bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
-        num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
-        init_checkpoint=cfg.INIT_CHECKPOINT,
-        learning_rate=cfg.LEARNING_RATE,
-        num_train_steps=-1,
-        num_warmup_steps=-1,
-        use_tpu=use_tpu,
-        use_one_hot_embeddings=True)
-
-    # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
-    estimator = tf.contrib.tpu.TPUEstimator(
-        use_tpu=use_tpu,
-        model_fn=model_fn,
-        config=run_config,
-        train_batch_size=cfg.TRAIN_BATCH_SIZE,
-        eval_batch_size=cfg.EVAL_BATCH_SIZE,
-        predict_batch_size=cfg.PREDICT_BATCH_SIZE)
+    estimator = define_model(cfg, tpu_address, use_tpu)
 
     predict_all_in_dir(cfg, estimator)
 
