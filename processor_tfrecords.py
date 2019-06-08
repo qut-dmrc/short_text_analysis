@@ -74,7 +74,6 @@ def main():
 
         # save examples asynchronously
         threading.Thread(target=save_examples, args=[tf_examples, gcs_output_file, gcs_output_file_ids]).start()
-        # save_examples(tf_examples, gcs_output_file, gcs_output_file_ids)
         tf.logging.info(f"Started saving features to {gcs_output_file}")
 
         tz = datetime.datetime.now()

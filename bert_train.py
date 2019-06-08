@@ -10,7 +10,9 @@ import json
 import math
 import multiprocessing as mp
 import os
+import random
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -21,7 +23,8 @@ from pandas.api.types import is_string_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
 from tensorflow.python.lib.io import file_io
 
-from cloud_utils import read_df_gcs, setup_logging_local
+from bert_classify_tfrc import predict_single_file
+from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
 
 
 def main():
@@ -103,9 +106,92 @@ def main():
 
     estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
 
-    tf.logging.info('Training on BERT base model. This usually takes < 5 minutes. Please wait...')
-    t0 = datetime.datetime.now()
+    train_classifier(cfg, estimator, num_train_steps, train_examples)
 
+    eval_classifier(cfg, estimator, processor, use_tpu)
+
+    test_classifier(cfg, estimator, label_list, processor)
+
+    ## Predict on live data and output a sample for validation or training
+    generate_random_validation(cfg, estimator)
+
+
+def test_classifier(cfg, estimator, label_list, processor):
+    # Run predictions on test data
+    test_examples = processor.get_test_examples()
+    t0 = datetime.datetime.now()
+    print('***** Started test predictions at {} *****'.format(t0))
+    tf.logging.info("  Num examples = %d", len(test_examples))
+    tf.logging.info("  Batch size = %d", cfg.PREDICT_BATCH_SIZE)
+
+    tf.logging.warn("Prediction on TPU is not supported. Some records will be dropped.")
+    test_drop_remainder = True
+    test_input_fn = run_classifier.input_fn_builder(
+        features=test_examples,
+        seq_length=cfg.MAX_SEQ_LENGTH,
+        is_training=False,
+        drop_remainder=test_drop_remainder)
+    result = estimator.predict(input_fn=test_input_fn)
+    t1 = datetime.datetime.now()
+    output_test_file = os.path.join(cfg.OUTPUT_DIR, "test_results.tsv")
+    results = []
+    with tf.gfile.GFile(output_test_file, "w") as writer:
+        tf.logging.info("***** Test results *****")
+        for prediction in result:
+            results.append({'predicted_class': np.argmax(prediction['probabilities']),
+                            'predicted_class_label': label_list[np.argmax(prediction['probabilities'])],
+                            'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
+            output_line = "\t".join(
+                str(class_probability) for class_probability in prediction) + "\n"
+            writer.write(output_line)
+    print('***** Finished test predictions at {}; {} total time *****'.format(t1, t1 - t0))
+    predictions = np.array([p['predicted_class'] for p in results])
+    label_ids = np.array([x.label_id for x in test_examples])
+    if len(predictions) < len(label_ids):
+        label_ids = label_ids[:len(predictions)]
+    confusion_matrix = tf.confusion_matrix(label_ids, predictions, num_classes=len(label_list), name="tests")
+    with tf.Session():
+        tf.logging.info(
+            'Confusion Matrix: \n\n {}'.format(tf.Tensor.eval(confusion_matrix, feed_dict=None, session=None)))
+    from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
+    y_pred = predictions
+    y_true = label_ids
+    tf.logging.info("accuracy: {}".format(accuracy_score(y_true, y_pred)))
+    for av in ['micro', 'macro', 'weighted']:
+        tf.logging.info("f1 ({}): {}".format(av, f1_score(y_true, y_pred, average=av)))
+        tf.logging.info("recall ({}): {}".format(av, recall_score(y_true, y_pred, average=av)))
+        tf.logging.info("precision ({}): {}".format(av, precision_score(y_true, y_pred, average=av)))
+
+
+def eval_classifier(cfg, estimator, processor, use_tpu):
+    # Eval the model.
+    eval_examples = processor.get_dev_examples()
+    t0 = datetime.datetime.now()
+    tf.logging.info('***** Started evaluation at {} *****'.format(t0))
+    tf.logging.info('  Num examples = {}'.format(len(eval_examples)))
+    tf.logging.info('  Batch size = {}'.format(cfg.EVAL_BATCH_SIZE))
+    if use_tpu:
+        tf.logging.warn("Eval will be slightly WRONG on the TPU because it will truncate the last batch.")
+    eval_steps = int(len(eval_examples) / cfg.EVAL_BATCH_SIZE)
+    eval_input_fn = run_classifier.input_fn_builder(
+        features=eval_examples,
+        seq_length=cfg.MAX_SEQ_LENGTH,
+        is_training=False,
+        drop_remainder=True)
+    result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
+    t1 = datetime.datetime.now()
+    tf.logging.info('***** Finished evaluation at {}; {} total time *****'.format(t1, t1 - t0))
+    output_eval_file = os.path.join(cfg.OUTPUT_DIR, "eval_results.txt")
+    with tf.gfile.GFile(output_eval_file, "w") as writer:
+        tf.logging.info("***** Eval results *****")
+        for key in sorted(result.keys()):
+            tf.logging.info('  {} = {}'.format(key, str(result[key])))
+            writer.write("%s = %s\n" % (key, str(result[key])))
+
+
+def train_classifier(cfg, estimator, num_train_steps, train_examples):
+    t0 = datetime.datetime.now()
+    tf.logging.info('Training on BERT base model. This usually takes < 5 minutes. Please wait...')
     tf.logging.info('***** Started training at {} *****'.format(t0))
     tf.logging.info('  Num examples = {}'.format(len(train_examples)))
     tf.logging.info('  Batch size = {}'.format(cfg.TRAIN_BATCH_SIZE))
@@ -119,98 +205,37 @@ def main():
     t1 = datetime.datetime.now()
     tf.logging.info('***** Finished training at {}; {} total time *****'.format(t1, t1 - t0))
 
-    # Eval the model.
-    eval_examples = processor.get_dev_examples()
 
-    t0 = datetime.datetime.now()
-    tf.logging.info('***** Started evaluation at {} *****'.format(t0))
-    tf.logging.info('  Num examples = {}'.format(len(eval_examples)))
-    tf.logging.info('  Batch size = {}'.format(cfg.EVAL_BATCH_SIZE))
+def generate_random_validation(cfg, estimator):
+    glob_list = tf.gfile.Glob(cfg.GCS_INPUT_PATH)
 
-    if use_tpu:
-        tf.logging.warn("Eval will be slightly WRONG on the TPU because it will truncate the last batch.")
-    eval_steps = int(len(eval_examples) / cfg.EVAL_BATCH_SIZE)
-    eval_input_fn = run_classifier.input_fn_builder(
-        features=eval_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
-        is_training=False,
-        drop_remainder=True)
-    result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
+    sample_file = random.choice(glob_list)
+    stem = Path(sample_file).stem
+    sample_file_tfrecords = os.path.join(cfg.GCS_OUTPUT_PATH,
+                                         stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQ_LENGTH}.tf_record')
 
-    t1 = datetime.datetime.now()
-    tf.logging.info('***** Finished evaluation at {}; {} total time *****'.format(t1, t1 - t0))
+    df = predict_single_file(cfg, estimator, sample_file_tfrecords)
 
-    output_eval_file = os.path.join(cfg.OUTPUT_DIR, "eval_results.txt")
-    with tf.gfile.GFile(output_eval_file, "w") as writer:
-        tf.logging.info("***** Eval results *****")
-        for key in sorted(result.keys()):
-            tf.logging.info('  {} = {}'.format(key, str(result[key])))
-            writer.write("%s = %s\n" % (key, str(result[key])))
+    df_sample = read_df_gcs(sample_file)
+    df = pd.merge(df_sample, df, left_on="id", right_on="guid")
 
-    # Run predictions on test data
-    test_examples = processor.get_test_examples()
+    # Get 1000 rows from each class
+    df_predictions = df.groupby('predicted_class').apply(lambda s: s.sample(min(len(s), 1000)))
+    df_predictions = df_predictions.reset_index(drop=True)
+    df_predictions["DATA_SOURCE"] = "{} random from class".format(stem)
 
-    t0 = datetime.datetime.now()
-    print('***** Started test predictions at {} *****'.format(t0))
+    # get 1000 least confident results for active labeling
+    df_least_confident = df.sort_values(by=['confidence'], ascending=True)[:1000]
+    df_least_confident["DATA_SOURCE"] = "{} least confident".format(stem)
 
-    tf.logging.info("  Num examples = %d", len(test_examples))
-    tf.logging.info("  Batch size = %d", cfg.PREDICT_BATCH_SIZE)
+    df_validate = pd.concat([df_predictions, df_least_confident])
+    df_validate = df_validate.drop_duplicates()
 
-    # Warning: According to tpu_estimator.py Prediction on TPU is an
-    # experimental feature and hence not supported here
-    #  raise ValueError("Prediction in TPU not supported")
+    run_date = datetime.datetime.strftime(datetime.datetime.utcnow(), '%Y%m%d%H%M')
 
-    test_drop_remainder = True
-
-    test_input_fn = run_classifier.input_fn_builder(
-        features=test_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
-        is_training=False,
-        drop_remainder=test_drop_remainder)
-
-    result = estimator.predict(input_fn=test_input_fn)
-
-    t1 = datetime.datetime.now()
-
-    output_test_file = os.path.join(cfg.OUTPUT_DIR, "test_results.tsv")
-
-    results = []
-    with tf.gfile.GFile(output_test_file, "w") as writer:
-        tf.logging.info("***** Test results *****")
-        for prediction in result:
-            results.append({'predicted_class': np.argmax(prediction['probabilities']),
-                            'predicted_class_label': label_list[np.argmax(prediction['probabilities'])],
-                            'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
-            output_line = "\t".join(
-                str(class_probability) for class_probability in prediction) + "\n"
-            writer.write(output_line)
-
-    print('***** Finished test predictions at {}; {} total time *****'.format(t1, t1 - t0))
-
-    predictions = np.array([p['predicted_class'] for p in results])
-    label_ids = np.array([x.label_id for x in test_examples])
-
-    if len(predictions) < len(label_ids):
-        label_ids = label_ids[:len(predictions)]
-
-    confusion_matrix = tf.confusion_matrix(label_ids, predictions, num_classes=len(label_list), name="tests")
-
-    with tf.Session():
-        tf.logging.info(
-            'Confusion Matrix: \n\n {}'.format(tf.Tensor.eval(confusion_matrix, feed_dict=None, session=None)))
-
-    from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
-
-    y_pred = predictions
-    y_true = label_ids
-
-    tf.logging.info("accuracy: {}".format(accuracy_score(y_true, y_pred)))
-    for av in ['micro', 'macro', 'weighted']:
-        tf.logging.info("f1 ({}): {}".format(av, f1_score(y_true, y_pred, average=av)))
-        tf.logging.info("recall ({}): {}".format(av, recall_score(y_true, y_pred, average=av)))
-        tf.logging.info("precision ({}): {}".format(av, precision_score(y_true, y_pred, average=av)))
-
-    ## TODO: Add code to predict on live data and output a sample for validation or training
+    gcs_output_path = cfg.OUTPUT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
+    save_df_gcs(gcs_output_path, df_validate)
+    tf.logging.info('Saved semi-supervised training set to: {}'.format(gcs_output_path))
 
 
 def convert_numeric_label_to_string(x, list_of_categories):

@@ -99,7 +99,6 @@ def predict_all_in_dir(cfg, estimator):
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
     tf.logging.set_verbosity(tf.logging.WARN)
     for predict_file in tf.gfile.Glob(cfg.PREDICT_SOURCE_TFRECORDS):
-        t1 = datetime.datetime.now()
         stem = Path(predict_file).stem
         predict_output_file_merged = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.merged.csv')
         predict_output_file_lock = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.LOCK')
@@ -112,44 +111,44 @@ def predict_all_in_dir(cfg, estimator):
         with tf.gfile.Open(predict_output_file_lock, mode="w") as f:
             f.write('Locked at {}'.format(t0))
 
-        tf.logging.warn("Predicting from {}.".format(predict_file))
-
-        # Warning: According to tpu_estimator.py Prediction on TPU is an
-        # experimental feature and hence not supported here
-        #  raise ValueError("Prediction in TPU not supported")
-
-        predict_drop_remainder = True
-
-        predict_input_fn = file_based_input_fn_builder(
-            input_file=predict_file,
-            seq_length=cfg.MAX_SEQUENCE_LENGTH,
-            is_training=False,
-            drop_remainder=True)
-
-        results = []
-        for prediction in estimator.predict(input_fn=predict_input_fn):
-            results.append({'predicted_class': np.argmax(prediction['probabilities']),
-                            'predicted_class_label': cfg.CLASSIFICATION_CATEGORIES[
-                                np.argmax(prediction['probabilities'])],
-                            'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
-
-        # Here results are stored as an ordered list - need to get the ID back from the ids.txt file.
-
-        tz = datetime.datetime.now()
-        tf.logging.warn('***** Finished predictions at {}; {} file time *****'.format(tz, tz - t1))
-
-        predict_file_ids = predict_file + '.ids.txt'
-        df_ids = read_df_gcs(predict_file_ids, header_rows=None)
-        df_ids.columns = ['guid']
-        df_results = pd.DataFrame(results)
-        df_merged = pd.concat([df_ids, df_results], axis=1)
-        df_merged = df_merged.rename(columns={'guid': 'tweet_id'})
+        df_merged = predict_single_file(cfg, estimator, predict_file)
         save_df_gcs(predict_output_file_merged, df_merged)
         tf.gfile.Remove(predict_output_file_lock)
 
     tz = datetime.datetime.now()
     tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
     tf.logging.set_verbosity(tf.logging.INFO)
+
+
+def predict_single_file(cfg, estimator, predict_file):
+    t1 = datetime.datetime.now()
+    tf.logging.warn("Predicting from {}.".format(predict_file))
+    # Warning: According to tpu_estimator.py Prediction on TPU is an
+    # experimental feature and hence not supported here
+    #  raise ValueError("Prediction in TPU not supported")
+    predict_drop_remainder = True
+    predict_input_fn = file_based_input_fn_builder(
+        input_file=predict_file,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+        is_training=False,
+        drop_remainder=True)
+    results = []
+    for prediction in estimator.predict(input_fn=predict_input_fn):
+        results.append({'predicted_class': np.argmax(prediction['probabilities']),
+                        'predicted_class_label': cfg.CLASSIFICATION_CATEGORIES[
+                            np.argmax(prediction['probabilities'])],
+                        'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
+    # Here results are stored as an ordered list - need to get the ID back from the ids.txt file.
+    tz = datetime.datetime.now()
+    tf.logging.warn('***** Finished predictions at {}; {} file time *****'.format(tz, tz - t1))
+    predict_file_ids = predict_file + '.ids.txt'
+    df_ids = read_df_gcs(predict_file_ids, header_rows=None)
+    df_ids.columns = ['guid']
+    df_results = pd.DataFrame(results)
+    df_merged = pd.concat([df_ids, df_results], axis=1)
+    df_merged = df_merged.rename(columns={'guid': cfg.ID_FIELD})
+
+    return df_merged
 
 
 if __name__ == '__main__':
