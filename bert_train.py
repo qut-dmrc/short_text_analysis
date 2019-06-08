@@ -229,7 +229,9 @@ def generate_random_validation(cfg, estimator):
     df_least_confident["DATA_SOURCE"] = "{} least confident".format(stem)
 
     df_validate = pd.concat([df_predictions, df_least_confident])
-    df_validate = df_validate.drop_duplicates()
+    df_validate = df_validate.drop_duplicates(subset=cfg.ID_FIELD)
+
+    df_validate[cfg.LABEL_FIELD] = None
 
     run_date = datetime.datetime.strftime(datetime.datetime.utcnow(), '%Y%m%d%H%M')
 
@@ -306,7 +308,8 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
     if label_field:  # if we were reading labeled data, only keep labeled records
         df = df.dropna(axis='index', subset=['label'])
 
-    df = df.drop_duplicates()
+    # If we have multiple rows for one text, drop the later ones.
+    df = df.drop_duplicates(subset=list_of_text_fields)
 
     for col in df.columns:
         # convert to unicode
