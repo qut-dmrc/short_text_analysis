@@ -13,7 +13,7 @@ import tensorflow as tf
 from bert.run_classifier import file_based_input_fn_builder
 from docopt import docopt
 
-from bert_train import define_model
+import bert_train
 from cloud_utils import read_df_gcs, save_df_gcs, setup_logging_local
 
 
@@ -83,7 +83,7 @@ def main():
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
-    estimator = define_model(cfg, tpu_address, use_tpu)
+    estimator = bert_train.define_model(cfg, tpu_address, use_tpu)
 
     predict_all_in_dir(cfg, estimator)
 
