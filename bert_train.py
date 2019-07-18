@@ -285,6 +285,9 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
         elem in df.columns for elem in
         list_of_all_fields), "Dataset appears to be missing columns - please check your inputs."
 
+    # If we have multiple rows for one text, drop the later ones.
+    df = df.drop_duplicates(subset=list_of_text_fields)
+
     # combine multiple text fields if neccessary
     if len(list_of_text_fields) > 1:
         df['text_a'] = df[list_of_text_fields[0]].str.cat(df[list_of_text_fields[1:]], sep=' ', na_rep='')
@@ -307,9 +310,6 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
     df = df.dropna(axis='index', subset=['guid', 'text_a'])
     if label_field:  # if we were reading labeled data, only keep labeled records
         df = df.dropna(axis='index', subset=['label'])
-
-    # If we have multiple rows for one text, drop the later ones.
-    df = df.drop_duplicates(subset=list_of_text_fields)
 
     for col in df.columns:
         # convert to unicode
