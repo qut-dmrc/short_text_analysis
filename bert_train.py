@@ -23,7 +23,7 @@ from pandas.api.types import is_string_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
 from tensorflow.python.lib.io import file_io
 
-from bert_classify_tfrc import predict_single_file
+import bert_classify_tfrc
 from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
 
 
@@ -214,7 +214,7 @@ def generate_random_validation(cfg, estimator):
     sample_file_tfrecords = os.path.join(cfg.GCS_OUTPUT_PATH,
                                          stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQ_LENGTH}.tf_record')
 
-    df = predict_single_file(cfg, estimator, sample_file_tfrecords)
+    df = bert_classify_tfrc.predict_single_file(cfg, estimator, sample_file_tfrecords)
 
     df_sample = read_df_gcs(sample_file)
     df = pd.merge(df_sample, df, left_on="id", right_on="guid")
