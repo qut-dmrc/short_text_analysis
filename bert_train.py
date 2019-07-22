@@ -256,6 +256,7 @@ def read_training_data_gcs(gcs_path, list_of_all_fields, label_field, list_of_ca
     for train_file in tf.gfile.Glob(gcs_path):
         data = read_df_gcs(train_file, list_of_all_fields)
         tf.logging.info('Found columns: {}'.format(data.columns))
+        tf.logging.info('Found categories: {}'.format(data[label_field].unique()))
         for field in list_of_all_fields:
             assert field in data.columns, "Column {} not found in dataset {}!".format(field, gcs_path)
         assert data.shape[0] > 0, "No data found in dataset!"
