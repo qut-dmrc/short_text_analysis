@@ -63,7 +63,7 @@ def setup_logging_local(log_file_name):
         "%(asctime)s [%(filename)-20.20s:%(lineno)-4.4s - %(funcName)-20.20s() [%(threadName)-12.12s] [%(levelname)-8.8s]  %(message).5000s")
 
     # create file handler which logs even debug messages
-    fh = logging.FileHandler(log_file_name)
+    fh = logging.FileHandler(log_file_name, encoding='utf8')
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logFormatter)
     log.addHandler(fh)

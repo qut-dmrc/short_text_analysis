@@ -50,7 +50,7 @@ def main():
     for file in glob_list:
         t1 = datetime.datetime.now()
         stem = Path(file).stem
-        gcs_output_file = os.path.join(cfg.GCS_OUTPUT_PATH, stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQ_LENGTH}.tf_record')
+        gcs_output_file = os.path.join(cfg.GCS_OUTPUT_PATH, stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
         gcs_output_file_ids = gcs_output_file + '.ids.txt'
 
         existing_files = tf.gfile.ListDirectory(cfg.GCS_OUTPUT_PATH)

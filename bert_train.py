@@ -128,7 +128,7 @@ def test_classifier(cfg, estimator, label_list, processor):
     test_drop_remainder = True
     test_input_fn = run_classifier.input_fn_builder(
         features=test_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
         is_training=False,
         drop_remainder=test_drop_remainder)
     result = estimator.predict(input_fn=test_input_fn)
@@ -175,7 +175,7 @@ def eval_classifier(cfg, estimator, processor, use_tpu):
     eval_steps = int(len(eval_examples) / cfg.EVAL_BATCH_SIZE)
     eval_input_fn = run_classifier.input_fn_builder(
         features=eval_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
         is_training=False,
         drop_remainder=True)
     result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
@@ -198,7 +198,7 @@ def train_classifier(cfg, estimator, num_train_steps, train_examples):
     tf.logging.info("  Num steps = %d", num_train_steps)
     train_input_fn = run_classifier.input_fn_builder(
         features=train_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
         is_training=True,
         drop_remainder=True)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
@@ -212,7 +212,7 @@ def generate_random_validation(cfg, estimator):
     sample_file = random.choice(glob_list)
     stem = Path(sample_file).stem
     sample_file_tfrecords = os.path.join(cfg.GCS_OUTPUT_PATH,
-                                         stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQ_LENGTH}.tf_record')
+                                         stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
 
     df = bert_classify_tfrc.predict_single_file(cfg, estimator, sample_file_tfrecords)
 
