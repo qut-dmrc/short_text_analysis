@@ -28,7 +28,12 @@ from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
 
 
 def main():
-    """ Run predictions for an entire directory of tfrecords with a stored BERT model
+    """ Train a BERT model. Loads a pretrained model and finetunes it based on all
+    training sets found in the specified directory.
+
+    Outputs a new predicted dataset from live data that can be used for validation and further
+    semi-supervised training.
+    
 
     Usage:
       bert_train.py --config=config_file [--tpu_name=name]
