@@ -273,7 +273,7 @@ def generate_random_validation(cfg, estimator):
 
     run_date = datetime.datetime.strftime(datetime.datetime.utcnow(), '%Y%m%d%H%M')
 
-    gcs_output_path = cfg.OUTPUT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
+    gcs_output_path = cfg.PREDICT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
     save_df_gcs(gcs_output_path, df_validate)
     tf.logging.info('Saved semi-supervised training set to: {}'.format(gcs_output_path))
 
@@ -693,7 +693,10 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
     else:
         tf.logging.debug(f"Finding latest checkpoint (searching {cfg.OUTPUT_DIR})...")
-        init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+        # No idea why this isn't working
+        # init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+        tf.logging.debug(f"Using checkpoint from config file: {cfg.INIT_CHECKPOINT}")
+        init_checkpoint = cfg.INIT_CHECKPOINT
 
     tf.logging.debug(f"Defining model function...")
     model_fn = model_fn_builder(
