@@ -96,7 +96,7 @@ def main():
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cfg.PATH_TO_GOOGLE_KEY
 
         import subprocess
-        cfg.num_cpu_cores = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+        cfg.num_gpu_cores = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
 
     tf.logging.info("Tensorflow version: {}".format(tf.__version__))
 
