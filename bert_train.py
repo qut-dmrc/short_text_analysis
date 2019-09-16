@@ -239,7 +239,7 @@ def generate_random_validation(cfg, estimator):
 
     sample_file = random.choice(glob_list)
     stem = Path(sample_file).stem
-    sample_file_tfrecords = os.path.join(Path(cfg.PREDICT_TFRECORDS).stem,
+    sample_file_tfrecords = os.path.join(cfg.PREDICT_TFRECORDS,
                                          stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
 
     tf.logging.info(f"Generating a validation dataset from a randomly chosen input file: {sample_file}")
