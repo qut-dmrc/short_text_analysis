@@ -56,6 +56,8 @@ SAVE_SUMMARY_STEPS = 100
 ITERATIONS_PER_LOOP = 1000
 NUM_TPU_CORES = 8
 
+USE_MULTI_GPU = False
+
 CONFIG_FILE = os.path.join(BERT_PRETRAINED_DIR, 'bert_config.json')
 #INIT_CHECKPOINT = os.path.join(BERT_PRETRAINED_DIR, 'model.ckpt')
 

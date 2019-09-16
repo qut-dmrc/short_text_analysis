@@ -665,7 +665,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         # TODO: Check if we need to specify TPU distribution strategy
         # dist_strategy = tf.distribute.experimental.TPUStrategy(tpu_cluster_resolver)
 
-    if cfg.num_gpu_cores >= 2:
+    if cfg.num_gpu_cores >= 2 and cfg.USE_MULTI_GPU:
         # dist_strategy = tf.distribute.MirroredStrategy()
         # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
 
