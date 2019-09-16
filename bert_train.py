@@ -681,6 +681,11 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
         else:
             dist_strategy = None
+
+        # REMOVE THIS LATER
+        tf.logging.info("DISABLING DISTRIBUTION STRATEGY FOR TESTING")
+        dist_strategy = None
+
         tf.logging.debug(f"Setting run_config...")
         run_config = tf.contrib.tpu.RunConfig(
             model_dir=cfg.OUTPUT_DIR,
