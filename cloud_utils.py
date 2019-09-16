@@ -1,5 +1,6 @@
 import csv
 import logging
+import os
 # from pandas.compat import BytesIO
 from io import BytesIO
 from io import StringIO
@@ -71,3 +72,8 @@ def setup_logging_local(log_file_name, verbose=False):
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logFormatter)
     log.addHandler(fh)
+
+    # Set tensorflow verbosity
+    if verbose:
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'  # or any {'0', '1', '2'}
+        tf.logging.set_verbosity(tf.logging.debug)
