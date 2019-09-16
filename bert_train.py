@@ -139,10 +139,12 @@ def main():
     if args['--validate']:
         # Load the stored model if we have one and didn't just train it.
         if not args['--train']:
+            tf.logging.info("Loading the fine-tuned model.")
             estimator = define_model(cfg, tpu_address, use_tpu)
 
         assert estimator is not None
 
+        tf.logging.info("Starting prediction on live data.")
         ## Predict on live data and output a sample for validation or training
         generate_random_validation(cfg, estimator)
 
@@ -671,7 +673,8 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             ### See: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
             ### "Note that there has to be at least one input file per worker. If you have less than one input file
             ### per worker, we suggest that you should disable distributing your dataset using the method below."
-            dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
+            dist_strategy = tf.distribute.MirroredStrategy()
+            # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
 
             # tf.contrib.distribute.MirroredStrategy(
             #                num_gpus=cfg.num_gpu_cores,
