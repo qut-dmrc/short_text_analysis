@@ -36,7 +36,8 @@ def main():
 
 
     Usage:
-      bert_train.py --config=config_file [--tpu_name=name]
+      bert_train.py --train --config=config_file [--tpu_name=name]
+      bert_train.py --validate --config=config_file [--tpu_name=name]
 
     Options:
       -h --help                 Show this screen.
