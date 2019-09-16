@@ -3,6 +3,7 @@
 """
 
 import datetime
+import functools
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from bert.run_classifier import file_based_input_fn_builder
 from docopt import docopt
 
 import bert_train
@@ -126,12 +126,20 @@ def predict_single_file(cfg, estimator, predict_file):
     # Warning: According to tpu_estimator.py Prediction on TPU is an
     # experimental feature and hence not supported here
     #  raise ValueError("Prediction in TPU not supported")
-    predict_drop_remainder = True
-    predict_input_fn = file_based_input_fn_builder(
-        input_file=predict_file,
+    # predict_drop_remainder = True
+    #    predict_input_fn = file_based_input_fn_builder(
+    #        input_file=predict_file,
+    #        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+    #        is_training=False,
+    #        drop_remainder=True)
+    predict_input_fn = functools.partial(
+        create_classifier_dataset_bert_tf2,
+        predict_file,
         seq_length=cfg.MAX_SEQUENCE_LENGTH,
+        batch_size=cfg.PREDICT_BATCH_SIZE,
         is_training=False,
         drop_remainder=True)
+
     results = []
     for prediction in estimator.predict(input_fn=predict_input_fn):
         results.append({'predicted_class': np.argmax(prediction['probabilities']),
@@ -150,6 +158,84 @@ def predict_single_file(cfg, estimator, predict_file):
 
     return df_merged
 
+
+"""
+These three functions were taken and modified from the TF2.0 development code for BERT
+https://github.com/tensorflow/models/blob/ce237770a7e0c73081942a2861ede9b3a2e30c8c/official/bert/input_pipeline.py#L39 
+"""
+
+
+def create_classifier_dataset_bert_tf2(file_path,
+                                       seq_length,
+                                       batch_size,
+                                       is_training=True,
+                                       drop_remainder=True):
+    """Creates input dataset from (tf)records files for train/eval."""
+    name_to_features = {
+        "input_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "input_mask": tf.FixedLenFeature([seq_length], tf.int64),
+        "segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
+        "label_ids": tf.FixedLenFeature([], tf.int64),
+        "is_real_example": tf.FixedLenFeature([], tf.int64),
+    }
+    input_fn = file_based_input_fn_builder_bert_tf2(file_path, name_to_features)
+    dataset = input_fn()
+
+    def _select_data_from_record(record):
+        x = {
+            'input_word_ids': record['input_ids'],
+            'input_mask': record['input_mask'],
+            'input_type_ids': record['segment_ids']
+        }
+        y = record['label_ids']
+        return (x, y)
+
+    dataset = dataset.map(_select_data_from_record)
+
+    if is_training:
+        dataset = dataset.shuffle(100)
+        dataset = dataset.repeat()
+
+    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+    dataset = dataset.prefetch(1024)
+    return dataset
+
+
+def file_based_input_fn_builder_bert_tf2(input_file, name_to_features):
+    """Creates an `input_fn` closure to be passed for BERT custom training."""
+
+    def input_fn():
+        """Returns dataset for training/evaluation."""
+        # For training, we want a lot of parallel reading and shuffling.
+        # For eval, we want no shuffling and parallel reading doesn't matter.
+        d = tf.data.TFRecordDataset(input_file)
+        d = d.map(lambda record: decode_record(record, name_to_features))
+
+        # When `input_file` is a path to a single file or a list
+        # containing a single path, disable auto sharding so that
+        # same input file is sent to all workers.
+        if isinstance(input_file, str) or len(input_file) == 1:
+            options = tf.data.Options()
+            options.experimental_distribute.auto_shard = False
+            d = d.with_options(options)
+        return d
+
+    return input_fn
+
+
+def decode_record(record, name_to_features):
+    """Decodes a record to a TensorFlow example."""
+    example = tf.io.parse_single_example(record, name_to_features)
+
+    # tf.Example only supports tf.int64, but the TPU only supports tf.int32.
+    # So cast all int64 to int32.
+    for name in list(example.keys()):
+        t = example[name]
+        if t.dtype == tf.int64:
+            t = tf.cast(t, tf.int32)
+        example[name] = t
+
+    return example
 
 if __name__ == '__main__':
     main()
