@@ -207,13 +207,13 @@ def train_classifier(cfg, estimator, num_train_steps, train_examples):
 
 
 def generate_random_validation(cfg, estimator):
-    glob_list = tf.gfile.Glob(cfg.GCS_INPUT_PATH)
+    glob_list = tf.gfile.Glob(cfg.PREDICT_INPUT_PATH)
 
     sample_file = random.choice(glob_list)
     stem = Path(sample_file).stem
     sample_file_tfrecords = os.path.join(cfg.GCS_OUTPUT_PATH,
                                          stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
-
+    
     df = bert_classify_tfrc.predict_single_file(cfg, estimator, sample_file_tfrecords)
 
     df_sample = read_df_gcs(sample_file)

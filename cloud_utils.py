@@ -4,7 +4,8 @@ from io import StringIO
 
 import pandas as pd
 import tensorflow as tf
-from pandas.compat import BytesIO
+#from pandas.compat import BytesIO
+from io import BytesIO
 from tensorflow.python.lib.io import file_io
 
 
