@@ -59,16 +59,17 @@ NUM_TPU_CORES = 8
 CONFIG_FILE = os.path.join(BERT_PRETRAINED_DIR, 'bert_config.json')
 #INIT_CHECKPOINT = os.path.join(BERT_PRETRAINED_DIR, 'model.ckpt')
 
-PREDICT_TFRECORDS = ''  # GCS path with TFRecords to predict
-
-# GCS_INPUT_PATH should be a path specification for CSV or JSON records
+# PREDICT_INPUT_PATH should be a path specification for CSV or JSON records
 # that we will transform to TFRecords
-GCS_INPUT_PATH = 'gs://platform_governance_datasets/twitter_tested_20181221/*.csv.gz'
+PREDICT_INPUT_PATH = 'gs://platform_governance_datasets/twitter_tested_20181221/*.csv.gz'
 # GCS_INPUT_PATH = 'gs://platform_governance_datasets/youtube_tested_20190204/*.json.gz'  # @param {type:"string"}
-GCS_INPUT_GZIP = (GCS_INPUT_PATH[-2:] == 'gz')
-GCS_INPUT_JSON = (GCS_INPUT_PATH[-4:] == 'json' or GCS_INPUT_PATH[-7:] == 'json.gz')
-GCS_OUTPUT_PATH = 'gs://platform_governance_datasets/tfrecords_bert/twitter_tested_20181221_with_replacements/'  # @param {type:"string"}
-assert GCS_OUTPUT_PATH, 'Must specify an existing GCS bucket name'
+PREDICT_INPUT_GZIP = (PREDICT_INPUT_PATH[-2:] == 'gz')
+PREDICT_INPUT_JSON = (PREDICT_INPUT_PATH[-4:] == 'json' or PREDICT_INPUT_PATH[-7:] == 'json.gz')
+
+PREDICT_TFRECORDS = ''  # GCS path with TFRecords to predict
+PREDICT_TFRECORDS = 'gs://platform_governance_datasets/tfrecords_bert/twitter_tested_20181221_with_replacements/'  # @param {type:"string"}
+assert PREDICT_TFRECORDS, 'Must specify an existing GCS bucket name'
+
 
 # Available pretrained model checkpoints:
 #   uncased_L-12_H-768_A-12: uncased BERT base model

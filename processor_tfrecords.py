@@ -39,8 +39,8 @@ def main():
     tf.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
     tf.logging.info(tf.gfile.ListDirectory(cfg.BERT_PRETRAINED_DIR))
 
-    tf.gfile.MakeDirs(cfg.GCS_OUTPUT_PATH)
-    tf.logging.info('***** TFRecords output directory: {} *****'.format(cfg.GCS_OUTPUT_PATH))
+    tf.gfile.MakeDirs(cfg.PREDICT_TFRECORDS)
+    tf.logging.info('***** TFRecords output directory: {} *****'.format(cfg.PREDICT_TFRECORDS))
 
     """ Convert all the input files to TensorFlow Records and save to GCS"""
     glob_list = tf.gfile.Glob(cfg.GCS_INPUT_PATH)
@@ -50,10 +50,10 @@ def main():
     for file in glob_list:
         t1 = datetime.datetime.now()
         stem = Path(file).stem
-        gcs_output_file = os.path.join(cfg.GCS_OUTPUT_PATH, stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
+        gcs_output_file = os.path.join(cfg.PREDICT_TFRECORDS, stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
         gcs_output_file_ids = gcs_output_file + '.ids.txt'
 
-        existing_files = tf.gfile.ListDirectory(cfg.GCS_OUTPUT_PATH)
+        existing_files = tf.gfile.ListDirectory(cfg.PREDICT_TFRECORDS)
         if os.path.basename(gcs_output_file) in existing_files:
             tf.logging.info(f"Output file {gcs_output_file} already exists. Skipping input from {file}.")
             continue
