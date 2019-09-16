@@ -1,11 +1,11 @@
 import csv
 import logging
+# from pandas.compat import BytesIO
+from io import BytesIO
 from io import StringIO
 
 import pandas as pd
 import tensorflow as tf
-#from pandas.compat import BytesIO
-from io import BytesIO
 from tensorflow.python.lib.io import file_io
 
 
@@ -54,10 +54,13 @@ def read_df_gcs(gcs_path, list_of_all_fields=None, header_rows=0):
     return data
 
 
-def setup_logging_local(log_file_name):
+def setup_logging_local(log_file_name, verbose=False):
     # get TF logger
     log = logging.getLogger('tensorflow')
-    log.setLevel(logging.INFO)
+    if verbose:
+        log.setLevel(logging.DEBUG)
+    else:
+        log.setLevel(logging.INFO)
 
     # create formatter and add it to the handlers
     logFormatter = logging.Formatter(
