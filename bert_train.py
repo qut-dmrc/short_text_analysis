@@ -37,8 +37,8 @@ def main():
 
 
     Usage:
-      bert_train.py --train --config=config_file [--tpu_name=name] [-v]
-      bert_train.py --validate --config=config_file [--tpu_name=name] [-v]
+      bert_train.py --train --config=config_file [--tpu_name=name] [-vm]
+      bert_train.py --validate --config=config_file [--tpu_name=name] [-vm]
 
     Options:
       -h --help                 Show this screen.
@@ -47,7 +47,8 @@ def main():
                                 any existing fine-tuned model
       --validate                Generate a validation dataset from real data
       --tpu_name=name           The name of the TPU or cluster to run on
-      -v --verbose                   Increase logging verbosity
+      -v --verbose              Increase logging verbosity
+      -m --multigpu             Run on multiple GPU cores if possible
       --version  Show version.
 
     """
@@ -96,8 +97,11 @@ def main():
 
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cfg.PATH_TO_GOOGLE_KEY
 
-        import subprocess
-        cfg.num_gpu_cores = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+        if args['--multigpu']:
+            import subprocess
+            cfg.NUM_GPU_CORES = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+        else:
+            cfg.NUM_GPU_CORES = 1
 
     tf.logging.info("Tensorflow version: {}".format(tf.__version__))
 
@@ -665,15 +669,15 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         # TODO: Check if we need to specify TPU distribution strategy
         # dist_strategy = tf.distribute.experimental.TPUStrategy(tpu_cluster_resolver)
 
-    if cfg.num_gpu_cores >= 2 and cfg.USE_MULTI_GPU:
+    if cfg.NUM_GPU_CORES >= 2:
         # dist_strategy = tf.distribute.MirroredStrategy()
-        # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
+        # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.NUM_GPU_CORES)
 
         dist_strategy = tf.contrib.distribute.MirroredStrategy(
-            num_gpus=cfg.num_gpu_cores,
-            cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
+            num_gpus=cfg.NUM_GPU_CORES,
+            cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.NUM_GPU_CORES),
         )
-        tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
+        tf.logging.info(f"Running on {cfg.NUM_GPU_CORES} GPU cores using Mirrored strategy.")
 
     tf.logging.debug(f"Setting run_config...")
 
