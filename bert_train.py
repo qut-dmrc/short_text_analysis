@@ -690,6 +690,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
 
     tf.logging.debug(f"Finding latest checkpoint...")
     if new_model:
+        tf.logging.warning("Running only from BERT pre-trained model (not finetuned).")
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
     else:
         tf.logging.debug(f"Finding latest checkpoint (searching {cfg.OUTPUT_DIR})...")
