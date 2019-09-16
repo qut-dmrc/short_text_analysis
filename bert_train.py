@@ -683,8 +683,8 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             dist_strategy = None
 
         # REMOVE THIS LATER
-        tf.logging.info("DISABLING DISTRIBUTION STRATEGY FOR TESTING")
-        dist_strategy = None
+        # tf.logging.info("DISABLING DISTRIBUTION STRATEGY FOR TESTING")
+        # dist_strategy = None
 
         tf.logging.debug(f"Setting run_config...")
         run_config = tf.contrib.tpu.RunConfig(
