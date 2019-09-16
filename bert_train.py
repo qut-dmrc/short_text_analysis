@@ -660,6 +660,10 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
     else:
         if cfg.num_gpu_cores >= 2:
+            ### This doesn't work yet -- we only have one data file for all the workers and no way to split it.
+            ### See: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
+            ### "Note that there has to be at least one input file per worker. If you have less than one input file
+            ### per worker, we suggest that you should disable distributing your dataset using the method below."
             dist_strategy = tf.contrib.distribute.MirroredStrategy(
                 num_gpus=cfg.num_gpu_cores,
                 cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
