@@ -75,5 +75,5 @@ def setup_logging_local(log_file_name, verbose=False):
 
     # Set tensorflow verbosity
     if verbose:
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = 0  # or any {'0', '1', '2'}
-        tf.logging.set_verbosity(tf.logging.debug)
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'  # or any {'0', '1', '2'}
+        tf.logging.set_verbosity(tf.logging.DEBUG)
