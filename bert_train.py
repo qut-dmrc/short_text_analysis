@@ -273,7 +273,7 @@ def generate_random_validation(cfg, estimator):
 
     run_date = datetime.datetime.strftime(datetime.datetime.utcnow(), '%Y%m%d%H%M')
 
-    gcs_output_path = cfg.OUTPUT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
+    gcs_output_path = cfg.PREDICT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
     save_df_gcs(gcs_output_path, df_validate)
     tf.logging.info('Saved semi-supervised training set to: {}'.format(gcs_output_path))
 
