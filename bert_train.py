@@ -671,8 +671,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             ### See: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
             ### "Note that there has to be at least one input file per worker. If you have less than one input file
             ### per worker, we suggest that you should disable distributing your dataset using the method below."
-            dist_strategy = tf.distribute.MirroredStrategy(
-                cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
+            dist_strategy = tf.distribute.MirroredStrategy()
 
             # tf.contrib.distribute.MirroredStrategy(
             #                num_gpus=cfg.num_gpu_cores,
