@@ -688,10 +688,11 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             num_shards=cfg.NUM_TPU_CORES,
             per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
 
-    tf.logging.debug(f"Finding latest checkpoint...")
     if new_model:
+        tf.logging.warning("Running only from BERT pre-trained model (not finetuned).")
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
     else:
+        tf.logging.debug(f"Finding latest checkpoint (searching {cfg.OUTPUT_DIR})...")
         init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
 
     tf.logging.debug(f"Defining model function...")
