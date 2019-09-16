@@ -21,6 +21,7 @@ from bert import run_classifier, modeling, optimization, tokenization
 from docopt import docopt
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
+from tensorflow.contrib.distribute import AllReduceCrossDeviceOps
 from tensorflow.python.lib.io import file_io
 
 import bert_classify_tfrc
@@ -657,48 +658,37 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
 def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1, new_model=False):
     tpu_cluster_resolver = None
+    dist_strategy = None
+
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
+        # TODO: Check if we need to specify TPU distribution strategy
+        # dist_strategy = tf.distribute.experimental.TPUStrategy(tpu_cluster_resolver)
 
-        run_config = tf.contrib.tpu.RunConfig(
-            cluster=tpu_cluster_resolver,
-            model_dir=cfg.OUTPUT_DIR,
-            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-            tpu_config=tf.contrib.tpu.TPUConfig(
-                iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-                num_shards=cfg.NUM_TPU_CORES,
-                per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
-    else:
-        if cfg.num_gpu_cores >= 2:
-            # dist_strategy = tf.distribute.MirroredStrategy()
-            # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
+    if cfg.num_gpu_cores >= 2:
+        # dist_strategy = tf.distribute.MirroredStrategy()
+        # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
 
-            dist_strategy = tf.contrib.distribute.MirroredStrategy(
-                num_gpus=cfg.num_gpu_cores,
-                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
-            )
-            tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
-        else:
-            dist_strategy = None
-
-        # REMOVE THIS LATER
-        # tf.logging.info("DISABLING DISTRIBUTION STRATEGY FOR TESTING")
-        # dist_strategy = None
-
-        tf.logging.debug(f"Setting run_config...")
-        run_config = tf.contrib.tpu.RunConfig(
-            model_dir=cfg.OUTPUT_DIR,
-            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-            train_distribute=dist_strategy,
-            eval_distribute=dist_strategy,
+        dist_strategy = tf.contrib.distribute.MirroredStrategy(
+            num_gpus=cfg.num_gpu_cores,
+            cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
         )
+        tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
 
-    if new_model:
-        init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
-    else:
-        init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+    tf.logging.debug(f"Setting run_config...")
 
-    tf.logging.debug(f"Defining model function...")
+    run_config = tf.contrib.tpu.RunConfig(
+        cluster=tpu_cluster_resolver,
+        model_dir=cfg.OUTPUT_DIR,
+        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+        train_distribute=dist_strategy,
+        eval_distribute=dist_strategy,
+        tpu_config=tf.contrib.tpu.TPUConfig(
+            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
+            num_shards=cfg.NUM_TPU_CORES,
+            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
+
+    tf.logging.debug(f"Finding latest checkpoint...")
     if new_model:
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
     else:
@@ -708,14 +698,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         tf.logging.debug(f"Using checkpoint from config file: {cfg.INIT_CHECKPOINT}")
         init_checkpoint = cfg.INIT_CHECKPOINT
 
-    run_config = tf.contrib.tpu.RunConfig(
-        cluster=tpu_cluster_resolver,
-        model_dir=cfg.OUTPUT_DIR,
-        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-        tpu_config=tf.contrib.tpu.TPUConfig(
-            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-            num_shards=cfg.NUM_TPU_CORES,
-            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
+    tf.logging.debug(f"Defining model function...")
     model_fn = model_fn_builder(
         bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
         num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
