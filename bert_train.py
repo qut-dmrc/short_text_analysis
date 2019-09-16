@@ -22,6 +22,7 @@ from docopt import docopt
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.distribute.cross_device_ops import AllReduceCrossDeviceOps
 
 import bert_classify_tfrc
 from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
@@ -93,6 +94,9 @@ def main():
         # auth to Google
 
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cfg.PATH_TO_GOOGLE_KEY
+
+        import subprocess
+        cfg.num_cpu_cores = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
 
     tf.logging.info("Tensorflow version: {}".format(tf.__version__))
 
@@ -651,8 +655,15 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
 def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1, new_model=False):
     tpu_cluster_resolver = None
+    dist_strategy = None
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
+    else:
+        if cfg.NUM_GPU_CORES >= 2:
+            dist_strategy = tf.contrib.distribute.MirroredStrategy(
+                num_gpus=cfg.num_cpu_cores,
+                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_cpu_cores),
+            )
 
     if new_model:
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
@@ -663,6 +674,8 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         cluster=tpu_cluster_resolver,
         model_dir=cfg.OUTPUT_DIR,
         save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+        train_distribute=dist_strategy,
+        eval_distribute=dist_strategy,
         tpu_config=tf.contrib.tpu.TPUConfig(
             iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
             num_shards=cfg.NUM_TPU_CORES,
