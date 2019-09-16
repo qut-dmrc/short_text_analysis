@@ -661,8 +661,8 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
     else:
         if cfg.num_gpu_cores >= 2:
             dist_strategy = tf.contrib.distribute.MirroredStrategy(
-                num_gpus=cfg.num_cpu_cores,
-                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_cpu_cores),
+                num_gpus=cfg.num_gpu_cores,
+                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
             )
 
     if new_model:
