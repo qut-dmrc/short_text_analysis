@@ -41,6 +41,9 @@ def main():
     Options:
       -h --help                 Show this screen.
       --config=config_file.py   The configuration file with model parameters, data path, etc
+      --train                   Run fine-tuning from training datasets - Beware, this deletes
+                                any existing fine-tuned model
+      --validate                Generate a validation dataset from real data
       --tpu_name=name           The name of the TPU or cluster to run on
       --version  Show version.
 
@@ -93,32 +96,48 @@ def main():
     tf.logging.info("Tensorflow version: {}".format(tf.__version__))
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
+    
 
-    # Train the model: Uses all training sets in the GCS bucket
-    # - anything labeled 'training/*.csv'
+    if args['--train']:
+      try:
+        tf.logging.info("DELETING OUTPUT DIRECTORY: {}".format(OUTPUT_DIR))
+        tf.gfile.DeleteRecursively(OUTPUT_DIR)
+      except:
+        # Doesn't matter if the directory didn't exist
+        pass
 
-    processor = ClassificationTrainingProcessor(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
+
+      # Train the model: Uses all training sets in the GCS bucket
+      # - anything labeled 'training/*.csv'
+
+      processor = ClassificationTrainingProcessor(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
                                                 cfg.CLASSIFICATION_CATEGORIES, cfg.ID_FIELD,
                                                 cfg.TEXT_FIELDS, cfg.VOCAB_FILE, cfg.MAX_SEQUENCE_LENGTH,
                                                 cfg.DO_LOWER_CASE)
 
-    label_list = processor.get_labels()
-    train_examples = processor.get_train_examples()
+      label_list = processor.get_labels()
+      train_examples = processor.get_train_examples()
 
-    num_train_steps = int(
-        len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
-    num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
+      num_train_steps = int(
+          len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
+      num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
 
-    estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
+      estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
 
-    train_classifier(cfg, estimator, num_train_steps, train_examples)
+      train_classifier(cfg, estimator, num_train_steps, train_examples)
 
-    eval_classifier(cfg, estimator, processor, use_tpu)
+      eval_classifier(cfg, estimator, processor, use_tpu)
 
-    test_classifier(cfg, estimator, label_list, processor)
+      test_classifier(cfg, estimator, label_list, processor)
 
-    ## Predict on live data and output a sample for validation or training
-    generate_random_validation(cfg, estimator)
+    if args['--validate']:
+      # Load the stored model if we have one and didn't just train it.
+      if not args['--train']:
+        estimator = None # TODO: add processor
+	assert not estimator == None	
+  
+      ## Predict on live data and output a sample for validation or training
+      generate_random_validation(cfg, estimator)
 
 
 def test_classifier(cfg, estimator, label_list, processor):
@@ -133,7 +152,7 @@ def test_classifier(cfg, estimator, label_list, processor):
     test_drop_remainder = True
     test_input_fn = run_classifier.input_fn_builder(
         features=test_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
         is_training=False,
         drop_remainder=test_drop_remainder)
     result = estimator.predict(input_fn=test_input_fn)
@@ -180,7 +199,7 @@ def eval_classifier(cfg, estimator, processor, use_tpu):
     eval_steps = int(len(eval_examples) / cfg.EVAL_BATCH_SIZE)
     eval_input_fn = run_classifier.input_fn_builder(
         features=eval_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
         is_training=False,
         drop_remainder=True)
     result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
@@ -203,7 +222,7 @@ def train_classifier(cfg, estimator, num_train_steps, train_examples):
     tf.logging.info("  Num steps = %d", num_train_steps)
     train_input_fn = run_classifier.input_fn_builder(
         features=train_examples,
-        seq_length=cfg.MAX_SEQ_LENGTH,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
         is_training=True,
         drop_remainder=True)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
@@ -212,13 +231,13 @@ def train_classifier(cfg, estimator, num_train_steps, train_examples):
 
 
 def generate_random_validation(cfg, estimator):
-    glob_list = tf.gfile.Glob(cfg.GCS_INPUT_PATH)
+    glob_list = tf.gfile.Glob(cfg.PREDICT_INPUT_PATH)
 
     sample_file = random.choice(glob_list)
     stem = Path(sample_file).stem
     sample_file_tfrecords = os.path.join(cfg.GCS_OUTPUT_PATH,
-                                         stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQ_LENGTH}.tf_record')
-
+                                         stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
+    
     df = bert_classify_tfrc.predict_single_file(cfg, estimator, sample_file_tfrecords)
 
     df_sample = read_df_gcs(sample_file)
