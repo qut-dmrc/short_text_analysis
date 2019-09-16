@@ -21,7 +21,6 @@ from bert import run_classifier, modeling, optimization, tokenization
 from docopt import docopt
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
-from tensorflow.python.distribute.cross_device_ops import AllReduceCrossDeviceOps
 from tensorflow.python.lib.io import file_io
 
 import bert_classify_tfrc
@@ -654,8 +653,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
 
 def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1, new_model=False):
-    tpu_cluster_resolver = None
-    dist_strategy = None
+
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
 
@@ -673,10 +671,13 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             ### See: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
             ### "Note that there has to be at least one input file per worker. If you have less than one input file
             ### per worker, we suggest that you should disable distributing your dataset using the method below."
-            dist_strategy = tf.contrib.distribute.MirroredStrategy(
-                num_gpus=cfg.num_gpu_cores,
-                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
-            )
+            dist_strategy = tf.distribute.MirroredStrategy(
+                cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
+
+            # tf.contrib.distribute.MirroredStrategy(
+            #                num_gpus=cfg.num_gpu_cores,
+            #                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
+            #            )
             tf.logging.info(f"Running on {cfg.num_gpu_cores} using Mirrored strategy.")
 
         run_config = tf.contrib.tpu.RunConfig(
