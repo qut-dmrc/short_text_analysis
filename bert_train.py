@@ -664,6 +664,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
                 num_gpus=cfg.num_gpu_cores,
                 cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
             )
+            tf.logging.info(f"Running on {cfg.num_gpu_cores} using Mirrored strategy.")
 
     if new_model:
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
