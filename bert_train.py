@@ -36,6 +36,9 @@ def main():
     Options:
       -h --help                 Show this screen.
       --config=config_file.py   The configuration file with model parameters, data path, etc
+      --train                   Run fine-tuning from training datasets - Beware, this deletes
+                                any existing fine-tuned model
+      --validate                Generate a validation dataset from real data
       --tpu_name=name           The name of the TPU or cluster to run on
       --version  Show version.
 
@@ -88,32 +91,48 @@ def main():
     tf.logging.info("Tensorflow version: {}".format(tf.__version__))
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
+    
 
-    # Train the model: Uses all training sets in the GCS bucket
-    # - anything labeled 'training/*.csv'
+    if args['--train']:
+      try:
+        tf.logging.info("DELETING OUTPUT DIRECTORY: {}".format(OUTPUT_DIR))
+        tf.gfile.DeleteRecursively(OUTPUT_DIR)
+      except:
+        # Doesn't matter if the directory didn't exist
+        pass
 
-    processor = ClassificationTrainingProcessor(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
+
+      # Train the model: Uses all training sets in the GCS bucket
+      # - anything labeled 'training/*.csv'
+
+      processor = ClassificationTrainingProcessor(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
                                                 cfg.CLASSIFICATION_CATEGORIES, cfg.ID_FIELD,
                                                 cfg.TEXT_FIELDS, cfg.VOCAB_FILE, cfg.MAX_SEQUENCE_LENGTH,
                                                 cfg.DO_LOWER_CASE)
 
-    label_list = processor.get_labels()
-    train_examples = processor.get_train_examples()
+      label_list = processor.get_labels()
+      train_examples = processor.get_train_examples()
 
-    num_train_steps = int(
-        len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
-    num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
+      num_train_steps = int(
+          len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
+      num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
 
-    estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
+      estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
 
-    train_classifier(cfg, estimator, num_train_steps, train_examples)
+      train_classifier(cfg, estimator, num_train_steps, train_examples)
 
-    eval_classifier(cfg, estimator, processor, use_tpu)
+      eval_classifier(cfg, estimator, processor, use_tpu)
 
-    test_classifier(cfg, estimator, label_list, processor)
+      test_classifier(cfg, estimator, label_list, processor)
 
-    ## Predict on live data and output a sample for validation or training
-    generate_random_validation(cfg, estimator)
+    if args['--validate']:
+      # Load the stored model if we have one and didn't just train it.
+      if not args['--train']:
+        estimator = None # TODO: add processor
+	assert not estimator == None	
+  
+      ## Predict on live data and output a sample for validation or training
+      generate_random_validation(cfg, estimator)
 
 
 def test_classifier(cfg, estimator, label_list, processor):
