@@ -36,8 +36,8 @@ def main():
 
 
     Usage:
-      bert_train.py --train --config=config_file [--tpu_name=name]
-      bert_train.py --validate --config=config_file [--tpu_name=name]
+      bert_train.py --train --config=config_file [--tpu_name=name] [-v]
+      bert_train.py --validate --config=config_file [--tpu_name=name] [-v]
 
     Options:
       -h --help                 Show this screen.
@@ -46,7 +46,7 @@ def main():
                                 any existing fine-tuned model
       --validate                Generate a validation dataset from real data
       --tpu_name=name           The name of the TPU or cluster to run on
-      --debug                   Increase logging verbosity
+      -v --verbose                   Increase logging verbosity
       --version  Show version.
 
     """
@@ -61,7 +61,7 @@ def main():
     date_prefix = format(
         datetime.datetime.utcnow().strftime('%Y%m%d%H%M'))
 
-    setup_logging_local(log_file_name=f'train_{date_prefix}.txt')
+    setup_logging_local(log_file_name=f'train_{date_prefix}.txt', verbose=args['--verbose'])
 
     tf.logging.info('***** Task data directory: {} *****'.format(cfg.TASK_DATA_DIR))
     tf.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
