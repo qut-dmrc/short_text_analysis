@@ -678,7 +678,9 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             #                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
             #            )
             tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
-
+        else:
+            dist_strategy = None
+            
         run_config = tf.contrib.tpu.RunConfig(
             model_dir=cfg.OUTPUT_DIR,
             save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
