@@ -21,8 +21,8 @@ from bert import run_classifier, modeling, optimization, tokenization
 from docopt import docopt
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.distribute.cross_device_ops import AllReduceCrossDeviceOps
+from tensorflow.python.lib.io import file_io
 
 import bert_classify_tfrc
 from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
@@ -658,6 +658,15 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
     dist_strategy = None
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
+
+        run_config = tf.contrib.tpu.RunConfig(
+            cluster=tpu_cluster_resolver,
+            model_dir=cfg.OUTPUT_DIR,
+            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+            tpu_config=tf.contrib.tpu.TPUConfig(
+                iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
+                num_shards=cfg.NUM_TPU_CORES,
+                per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
     else:
         if cfg.num_gpu_cores >= 2:
             ### This doesn't work yet -- we only have one data file for all the workers and no way to split it.
@@ -670,21 +679,18 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             )
             tf.logging.info(f"Running on {cfg.num_gpu_cores} using Mirrored strategy.")
 
+        run_config = tf.contrib.tpu.RunConfig(
+            model_dir=cfg.OUTPUT_DIR,
+            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+            train_distribute=dist_strategy,
+            eval_distribute=dist_strategy,
+        )
+
     if new_model:
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
     else:
         init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
 
-    run_config = tf.contrib.tpu.RunConfig(
-        cluster=tpu_cluster_resolver,
-        model_dir=cfg.OUTPUT_DIR,
-        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-        train_distribute=dist_strategy,
-        eval_distribute=dist_strategy,
-        tpu_config=tf.contrib.tpu.TPUConfig(
-            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-            num_shards=cfg.NUM_TPU_CORES,
-            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
     model_fn = model_fn_builder(
         bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
         num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
