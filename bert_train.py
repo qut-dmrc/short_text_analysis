@@ -251,7 +251,7 @@ def generate_random_validation(cfg, estimator):
     df = bert_classify_tfrc.predict_single_file(cfg, estimator, sample_file_tfrecords)
 
     df_sample = read_df_gcs(sample_file)
-    df = pd.merge(df_sample, df, left_on="id", right_on="guid")
+    df = pd.merge(df_sample, df, left_on=cfg.ID_FIELD, right_on=cfg.ID_FIELD)
 
     # Get 1000 rows from each class
     df_predictions = df.groupby('predicted_class').apply(lambda s: s.sample(min(len(s), 1000)))
@@ -671,13 +671,13 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             ### See: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
             ### "Note that there has to be at least one input file per worker. If you have less than one input file
             ### per worker, we suggest that you should disable distributing your dataset using the method below."
-            dist_strategy = tf.distribute.MirroredStrategy()
+            dist_strategy = tf.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
 
             # tf.contrib.distribute.MirroredStrategy(
             #                num_gpus=cfg.num_gpu_cores,
             #                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
             #            )
-            tf.logging.info(f"Running on {cfg.num_gpu_cores} using Mirrored strategy.")
+            tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
 
         run_config = tf.contrib.tpu.RunConfig(
             model_dir=cfg.OUTPUT_DIR,
