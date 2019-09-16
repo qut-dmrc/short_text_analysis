@@ -46,6 +46,7 @@ def main():
                                 any existing fine-tuned model
       --validate                Generate a validation dataset from real data
       --tpu_name=name           The name of the TPU or cluster to run on
+      --debug                   Increase logging verbosity
       --version  Show version.
 
     """
@@ -683,7 +684,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
             tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
         else:
             dist_strategy = None
-            
+        tf.logging.debug(f"Setting run_config...")
         run_config = tf.contrib.tpu.RunConfig(
             model_dir=cfg.OUTPUT_DIR,
             save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
@@ -696,6 +697,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
     else:
         init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
 
+    tf.logging.debug(f"Defining model function...")
     model_fn = model_fn_builder(
         bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
         num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
@@ -706,6 +708,9 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         use_tpu=use_tpu,
         use_one_hot_embeddings=True)
     # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
+
+    tf.logging.debug(f"Creating estimator...")
+
     estimator = tf.contrib.tpu.TPUEstimator(
         use_tpu=use_tpu,
         model_fn=model_fn,
