@@ -36,8 +36,8 @@ def main():
 
 
     Usage:
-      bert_train.py --train --config=config_file [--tpu_name=name]
-      bert_train.py --validate --config=config_file [--tpu_name=name]
+      bert_train.py --train --config=config_file [--tpu_name=name] [-v]
+      bert_train.py --validate --config=config_file [--tpu_name=name] [-v]
 
     Options:
       -h --help                 Show this screen.
@@ -46,6 +46,7 @@ def main():
                                 any existing fine-tuned model
       --validate                Generate a validation dataset from real data
       --tpu_name=name           The name of the TPU or cluster to run on
+      -v --verbose                   Increase logging verbosity
       --version  Show version.
 
     """
@@ -60,7 +61,7 @@ def main():
     date_prefix = format(
         datetime.datetime.utcnow().strftime('%Y%m%d%H%M'))
 
-    setup_logging_local(log_file_name=f'train_{date_prefix}.txt')
+    setup_logging_local(log_file_name=f'train_{date_prefix}.txt', verbose=args['--verbose'])
 
     tf.logging.info('***** Task data directory: {} *****'.format(cfg.TASK_DATA_DIR))
     tf.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
@@ -139,10 +140,12 @@ def main():
     if args['--validate']:
         # Load the stored model if we have one and didn't just train it.
         if not args['--train']:
+            tf.logging.info("Loading the fine-tuned model.")
             estimator = define_model(cfg, tpu_address, use_tpu)
 
         assert estimator is not None
 
+        tf.logging.info("Starting prediction on live data.")
         ## Predict on live data and output a sample for validation or training
         generate_random_validation(cfg, estimator)
 
@@ -657,6 +660,45 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
 
+        run_config = tf.contrib.tpu.RunConfig(
+            cluster=tpu_cluster_resolver,
+            model_dir=cfg.OUTPUT_DIR,
+            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+            tpu_config=tf.contrib.tpu.TPUConfig(
+                iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
+                num_shards=cfg.NUM_TPU_CORES,
+                per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
+    else:
+        if cfg.num_gpu_cores >= 2:
+            # dist_strategy = tf.distribute.MirroredStrategy()
+            # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
+
+            dist_strategy = tf.contrib.distribute.MirroredStrategy(
+                num_gpus=cfg.num_gpu_cores,
+                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
+            )
+            tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
+        else:
+            dist_strategy = None
+
+        # REMOVE THIS LATER
+        tf.logging.info("DISABLING DISTRIBUTION STRATEGY FOR TESTING")
+        dist_strategy = None
+
+        tf.logging.debug(f"Setting run_config...")
+        run_config = tf.contrib.tpu.RunConfig(
+            model_dir=cfg.OUTPUT_DIR,
+            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+            train_distribute=dist_strategy,
+            eval_distribute=dist_strategy,
+        )
+
+    if new_model:
+        init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
+    else:
+        init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+
+    tf.logging.debug(f"Defining model function...")
     if new_model:
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
     else:
@@ -684,6 +726,9 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         use_tpu=use_tpu,
         use_one_hot_embeddings=True)
     # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
+
+    tf.logging.debug(f"Creating estimator...")
+
     estimator = tf.contrib.tpu.TPUEstimator(
         use_tpu=use_tpu,
         model_fn=model_fn,
