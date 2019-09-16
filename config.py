@@ -57,7 +57,7 @@ ITERATIONS_PER_LOOP = 1000
 NUM_TPU_CORES = 8
 
 CONFIG_FILE = os.path.join(BERT_PRETRAINED_DIR, 'bert_config.json')
-INIT_CHECKPOINT = os.path.join(BERT_PRETRAINED_DIR, 'model.ckpt')
+#INIT_CHECKPOINT = os.path.join(BERT_PRETRAINED_DIR, 'model.ckpt')
 
 PREDICT_TFRECORDS = ''  # GCS path with TFRecords to predict
 

@@ -33,7 +33,7 @@ def main():
 
     Outputs a new predicted dataset from live data that can be used for validation and further
     semi-supervised training.
-    
+
 
     Usage:
       bert_train.py --config=config_file [--tpu_name=name]
@@ -96,48 +96,51 @@ def main():
     tf.logging.info("Tensorflow version: {}".format(tf.__version__))
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
-    
+
+    estimator = None
 
     if args['--train']:
-      try:
-        tf.logging.info("DELETING OUTPUT DIRECTORY: {}".format(OUTPUT_DIR))
-        tf.gfile.DeleteRecursively(OUTPUT_DIR)
-      except:
-        # Doesn't matter if the directory didn't exist
-        pass
+        try:
+            tf.logging.info("DELETING OUTPUT DIRECTORY: {}".format(cfg.OUTPUT_DIR))
+            tf.gfile.DeleteRecursively(cfg.OUTPUT_DIR)
+        except:
+            # Doesn't matter if the directory didn't exist
+            pass
 
+        tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
-      # Train the model: Uses all training sets in the GCS bucket
-      # - anything labeled 'training/*.csv'
+        # Train the model: Uses all training sets in the GCS bucket
+        # - anything labeled 'training/*.csv'
 
-      processor = ClassificationTrainingProcessor(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
-                                                cfg.CLASSIFICATION_CATEGORIES, cfg.ID_FIELD,
-                                                cfg.TEXT_FIELDS, cfg.VOCAB_FILE, cfg.MAX_SEQUENCE_LENGTH,
-                                                cfg.DO_LOWER_CASE)
+        processor = ClassificationTrainingProcessor(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
+                                                    cfg.CLASSIFICATION_CATEGORIES, cfg.ID_FIELD,
+                                                    cfg.TEXT_FIELDS, cfg.VOCAB_FILE, cfg.MAX_SEQUENCE_LENGTH,
+                                                    cfg.DO_LOWER_CASE)
 
-      label_list = processor.get_labels()
-      train_examples = processor.get_train_examples()
+        label_list = processor.get_labels()
+        train_examples = processor.get_train_examples()
 
-      num_train_steps = int(
-          len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
-      num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
+        num_train_steps = int(
+            len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
+        num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
 
-      estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
+        estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
 
-      train_classifier(cfg, estimator, num_train_steps, train_examples)
+        train_classifier(cfg, estimator, num_train_steps, train_examples)
 
-      eval_classifier(cfg, estimator, processor, use_tpu)
+        eval_classifier(cfg, estimator, processor, use_tpu)
 
-      test_classifier(cfg, estimator, label_list, processor)
+        test_classifier(cfg, estimator, label_list, processor)
 
     if args['--validate']:
-      # Load the stored model if we have one and didn't just train it.
-      if not args['--train']:
-        estimator = None # TODO: add processor
-	assert not estimator == None	
-  
-      ## Predict on live data and output a sample for validation or training
-      generate_random_validation(cfg, estimator)
+        # Load the stored model if we have one and didn't just train it.
+        if not args['--train']:
+            estimator = define_model(cfg, tpu_address, use_tpu)
+
+        assert estimator is not None
+
+        ## Predict on live data and output a sample for validation or training
+        generate_random_validation(cfg, estimator)
 
 
 def test_classifier(cfg, estimator, label_list, processor):
@@ -235,9 +238,12 @@ def generate_random_validation(cfg, estimator):
 
     sample_file = random.choice(glob_list)
     stem = Path(sample_file).stem
-    sample_file_tfrecords = os.path.join(cfg.GCS_OUTPUT_PATH,
+    sample_file_tfrecords = os.path.join(Path(cfg.PREDICT_TFRECORDS).stem,
                                          stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
-    
+
+    tf.logging.info(f"Generating a validation dataset from a randomly chosen input file: {sample_file}")
+    tf.logging.info(f"(Using TFRecords from : {sample_file_tfrecords})")
+
     df = bert_classify_tfrc.predict_single_file(cfg, estimator, sample_file_tfrecords)
 
     df_sample = read_df_gcs(sample_file)
@@ -642,10 +648,16 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
     return model_fn
 
 
-def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1):
+def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1, new_model=False):
     tpu_cluster_resolver = None
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
+
+    if new_model:
+        init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
+    else:
+        init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+
     run_config = tf.contrib.tpu.RunConfig(
         cluster=tpu_cluster_resolver,
         model_dir=cfg.OUTPUT_DIR,
@@ -657,7 +669,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
     model_fn = model_fn_builder(
         bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
         num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
-        init_checkpoint=cfg.INIT_CHECKPOINT,
+        init_checkpoint=init_checkpoint,
         learning_rate=cfg.LEARNING_RATE,
         num_train_steps=num_train_steps,
         num_warmup_steps=num_warmup_steps,
@@ -672,7 +684,6 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         eval_batch_size=cfg.EVAL_BATCH_SIZE,
         predict_batch_size=cfg.PREDICT_BATCH_SIZE)
     return estimator
-
 
 
 if __name__ == '__main__':
