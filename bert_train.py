@@ -235,11 +235,14 @@ def train_classifier(cfg, estimator, num_train_steps, train_examples):
     tf.logging.info('  Num examples = {}'.format(len(train_examples)))
     tf.logging.info('  Batch size = {}'.format(cfg.TRAIN_BATCH_SIZE))
     tf.logging.info("  Num steps = %d", num_train_steps)
-    train_input_fn = run_classifier.input_fn_builder(
-        features=train_examples,
-        seq_length=cfg.MAX_SEQUENCE_LENGTH,
-        is_training=True,
-        drop_remainder=True)
+    #    train_input_fn = run_classifier.input_fn_builder(
+    #        features=train_examples,
+    #        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+    #        is_training=True,
+    #        drop_remainder=True)
+    train_input_fn = create_training_dataset_bert_tf2(features=train_examples, seq_length=cfg.MAX_SEQUENCE_LENGTH,
+                                                      batch_size=cfg.TRAIN_BATCH_SIZE, is_training=True,
+                                                      drop_remainder=True)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
     t1 = datetime.datetime.now()
     tf.logging.info('***** Finished training at {}; {} total time *****'.format(t1, t1 - t0))
@@ -725,6 +728,81 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         eval_batch_size=cfg.EVAL_BATCH_SIZE,
         predict_batch_size=cfg.PREDICT_BATCH_SIZE)
     return estimator
+
+
+"""
+This function was taken and modified from the TF2.0 development code for BERT
+https://github.com/tensorflow/models/blob/ce237770a7e0c73081942a2861ede9b3a2e30c8c/official/bert/input_pipeline.py#L39 
+"""
+
+
+def create_training_dataset_bert_tf2(features, seq_length, batch_size, is_training, drop_remainder):
+    """Creates an `input_fn` closure to be passed to TPUEstimator."""
+
+    all_input_ids = []
+    all_input_mask = []
+    all_segment_ids = []
+    all_label_ids = []
+
+    for feature in features:
+        all_input_ids.append(feature.input_ids)
+        all_input_mask.append(feature.input_mask)
+        all_segment_ids.append(feature.segment_ids)
+        all_label_ids.append(feature.label_id)
+
+    def input_fn():
+        """The actual input function."""
+        num_examples = len(features)
+
+        # This is for demo purposes and does NOT scale to large data sets. We do
+        # not use Dataset.from_generator() because that uses tf.py_func which is
+        # not TPU compatible. The right way to load data is with TFRecordReader.
+        d = tf.data.Dataset.from_tensor_slices({
+            "input_ids":
+                tf.constant(
+                    all_input_ids, shape=[num_examples, seq_length],
+                    dtype=tf.int32),
+            "input_mask":
+                tf.constant(
+                    all_input_mask,
+                    shape=[num_examples, seq_length],
+                    dtype=tf.int32),
+            "segment_ids":
+                tf.constant(
+                    all_segment_ids,
+                    shape=[num_examples, seq_length],
+                    dtype=tf.int32),
+            "label_ids":
+                tf.constant(all_label_ids, shape=[num_examples], dtype=tf.int32),
+        })
+
+        return d
+
+    tf.logging.debug("Creating input function")
+    dataset = input_fn()
+
+    def _select_data_from_record(record):
+        x = {
+            'input_word_ids': record['input_ids'],
+            'input_mask': record['input_mask'],
+            'input_type_ids': record['segment_ids']
+        }
+        y = record['label_ids']
+        return (x, y)
+
+    dataset = dataset.map(_select_data_from_record)
+
+    if is_training:
+        tf.logging.debug("Shuffling data")
+        dataset = dataset.shuffle(100)
+        dataset = dataset.repeat()
+
+    tf.logging.debug("Batching data")
+    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+
+    tf.logging.debug("Prefetching data")
+    dataset = dataset.prefetch(1024)
+    return dataset
 
 
 if __name__ == '__main__':
