@@ -653,46 +653,27 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
 
 def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1, new_model=False):
-
+    tpu_cluster_resolver = None
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
-
-        run_config = tf.contrib.tpu.RunConfig(
-            cluster=tpu_cluster_resolver,
-            model_dir=cfg.OUTPUT_DIR,
-            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-            tpu_config=tf.contrib.tpu.TPUConfig(
-                iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-                num_shards=cfg.NUM_TPU_CORES,
-                per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
-    else:
-        if cfg.num_gpu_cores >= 2:
-            ### This doesn't work yet -- we only have one data file for all the workers and no way to split it.
-            ### See: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
-            ### "Note that there has to be at least one input file per worker. If you have less than one input file
-            ### per worker, we suggest that you should disable distributing your dataset using the method below."
-            dist_strategy = tf.distribute.MirroredStrategy(num_gpus=cfg.num_gpu_cores)
-
-            # tf.contrib.distribute.MirroredStrategy(
-            #                num_gpus=cfg.num_gpu_cores,
-            #                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.num_gpu_cores),
-            #            )
-            tf.logging.info(f"Running on {cfg.num_gpu_cores} GPU cores using Mirrored strategy.")
-        else:
-            dist_strategy = None
-            
-        run_config = tf.contrib.tpu.RunConfig(
-            model_dir=cfg.OUTPUT_DIR,
-            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-            train_distribute=dist_strategy,
-            eval_distribute=dist_strategy,
-        )
 
     if new_model:
         init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
     else:
-        init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+        tf.logging.debug(f"Finding latest checkpoint (searching {cfg.OUTPUT_DIR})...")
+        # No idea why this isn't working
+        # init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+        tf.logging.debug(f"Using checkpoint from config file: {cfg.INIT_CHECKPOINT}")
+        init_checkpoint = cfg.INIT_CHECKPOINT
 
+    run_config = tf.contrib.tpu.RunConfig(
+        cluster=tpu_cluster_resolver,
+        model_dir=cfg.OUTPUT_DIR,
+        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+        tpu_config=tf.contrib.tpu.TPUConfig(
+            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
+            num_shards=cfg.NUM_TPU_CORES,
+            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
     model_fn = model_fn_builder(
         bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
         num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
