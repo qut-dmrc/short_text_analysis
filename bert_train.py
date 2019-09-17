@@ -37,8 +37,7 @@ def main():
 
 
     Usage:
-      bert_train.py --train --config=config_file [--tpu_name=name] [-vm]
-      bert_train.py --validate --config=config_file [--tpu_name=name] [-vm]
+      bert_train.py [--train] [--validate] --config=config_file [--tpu_name=name] [-vm]
 
     Options:
       -h --help                 Show this screen.
@@ -54,6 +53,7 @@ def main():
     """
 
     args = docopt(main.__doc__, version='DMRC BERT Classifier 0.1')
+    assert args['--train'] or args['--validate'], "No action provided. Must select train, validate, or both."
 
     import importlib.util
     spec = importlib.util.spec_from_file_location("classifier.config", args['--config'])
