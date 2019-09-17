@@ -3,7 +3,6 @@
 """
 
 import datetime
-import functools
 import json
 import os
 from pathlib import Path
@@ -11,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from bert.run_classifier import file_based_input_fn_builder
 from docopt import docopt
 
 import bert_train
@@ -129,18 +129,18 @@ def predict_single_file(cfg, estimator, predict_file):
     # experimental feature and hence not supported here
     #  raise ValueError("Prediction in TPU not supported")
     # predict_drop_remainder = True
-    #    predict_input_fn = file_based_input_fn_builder(
-    #        input_file=predict_file,
-    #        seq_length=cfg.MAX_SEQUENCE_LENGTH,
-    #        is_training=False,
-    #        drop_remainder=True)
-    predict_input_fn = functools.partial(
-        create_classifier_dataset_bert_tf2,
-        predict_file,
+    predict_input_fn = file_based_input_fn_builder(
+        input_file=predict_file,
         seq_length=cfg.MAX_SEQUENCE_LENGTH,
-        batch_size=cfg.PREDICT_BATCH_SIZE,
         is_training=False,
         drop_remainder=True)
+    # predict_input_fn = functools.partial(
+    #    create_classifier_dataset_bert_tf2,
+    #    predict_file,
+    #    seq_length=cfg.MAX_SEQUENCE_LENGTH,
+    #    batch_size=cfg.PREDICT_BATCH_SIZE,
+    #    is_training=False,
+    #    drop_remainder=True)
 
     results = []
     for prediction in estimator.predict(input_fn=predict_input_fn):
@@ -180,6 +180,7 @@ def create_classifier_dataset_bert_tf2(file_path,
         "label_ids": tf.FixedLenFeature([], tf.int64),
         "is_real_example": tf.FixedLenFeature([], tf.int64),
     }
+    tf.logging.debug("Creating input function")
     input_fn = file_based_input_fn_builder_bert_tf2(file_path, name_to_features)
     dataset = input_fn()
 
@@ -195,10 +196,14 @@ def create_classifier_dataset_bert_tf2(file_path,
     dataset = dataset.map(_select_data_from_record)
 
     if is_training:
+        tf.logging.debug("Shuffling data")
         dataset = dataset.shuffle(100)
         dataset = dataset.repeat()
 
+    tf.logging.debug("Batching data")
     dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+
+    tf.logging.debug("Prefetching data")
     dataset = dataset.prefetch(1024)
     return dataset
 
