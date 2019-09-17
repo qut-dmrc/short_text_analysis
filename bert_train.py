@@ -5,7 +5,6 @@ This module contains functions to train a simple multi-label classification proc
 
 import collections
 import datetime
-import functools
 import itertools
 import json
 import math
@@ -139,13 +138,9 @@ def main():
         cfg.training_guids_path = cfg.OUTPUT_DIR + '/training_set.tfrecords.ids'
         save_examples(train_examples, cfg.training_tfrecords_path, cfg.training_guids_path)
 
-        tf.logging.info('  Num examples = {}'.format(len(train_examples)))
-        tf.logging.info('  Batch size = {}'.format(cfg.TRAIN_BATCH_SIZE))
-        tf.logging.info("  Num steps = %d", num_train_steps)
-
         estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps, new_model=True)
 
-        train_classifier(cfg, estimator, num_train_steps)
+        train_classifier(cfg, estimator, num_train_steps, train_examples)
 
         eval_classifier(cfg, estimator, processor, use_tpu)
 
@@ -237,20 +232,19 @@ def eval_classifier(cfg, estimator, processor, use_tpu):
             writer.write("%s = %s\n" % (key, str(result[key])))
 
 
-def train_classifier(cfg, estimator, num_train_steps):
+def train_classifier(cfg, estimator, num_train_steps, train_examples):
     t0 = datetime.datetime.now()
     tf.logging.info('Training on BERT base model. This usually takes < 5 minutes. Please wait...')
     tf.logging.info('***** Started training at {} *****'.format(t0))
+    tf.logging.info('  Num examples = {}'.format(len(train_examples)))
+    tf.logging.info('  Batch size = {}'.format(cfg.TRAIN_BATCH_SIZE))
+    tf.logging.info("  Num steps = %d", num_train_steps)
 
-    #    train_input_fn = run_classifier.input_fn_builder(
-    #        features=train_examples,
-    #        seq_length=cfg.MAX_SEQUENCE_LENGTH,
-    #        is_training=True,
-    #        drop_remainder=True)
-    train_input_fn = functools.partial(
-        bert_classify_tfrc.create_classifier_dataset_bert_tf2,
-        cfg.training_tfrecords_path,
-        seq_length=cfg.MAX_SEQUENCE_LENGTH)
+    train_input_fn = run_classifier.input_fn_builder(
+        features=train_examples,
+        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+        is_training=True,
+        drop_remainder=True)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
     t1 = datetime.datetime.now()
     tf.logging.info('***** Finished training at {}; {} total time *****'.format(t1, t1 - t0))
