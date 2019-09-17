@@ -5,6 +5,7 @@ This module contains functions to train a simple multi-label classification proc
 
 import collections
 import datetime
+import functools
 import itertools
 import json
 import math
@@ -240,9 +241,9 @@ def train_classifier(cfg, estimator, num_train_steps, train_examples):
     #        seq_length=cfg.MAX_SEQUENCE_LENGTH,
     #        is_training=True,
     #        drop_remainder=True)
-    train_input_fn = create_training_dataset_bert_tf2(features=train_examples, seq_length=cfg.MAX_SEQUENCE_LENGTH,
-                                                      batch_size=cfg.TRAIN_BATCH_SIZE, is_training=True,
-                                                      drop_remainder=True)
+    train_input_fn = functools.partial(create_training_dataset_bert_tf2, features=train_examples,
+                                       seq_length=cfg.MAX_SEQUENCE_LENGTH, batch_size=cfg.TRAIN_BATCH_SIZE,
+                                       is_training=True, drop_remainder=True)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
     t1 = datetime.datetime.now()
     tf.logging.info('***** Finished training at {}; {} total time *****'.format(t1, t1 - t0))
