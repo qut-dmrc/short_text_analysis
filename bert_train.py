@@ -250,7 +250,7 @@ def train_classifier(cfg, estimator, num_train_steps):
     train_input_fn = functools.partial(
         bert_classify_tfrc.create_classifier_dataset_bert_tf2,
         cfg.training_tfrecords_path,
-        seq_length=cfg.MAX_SEQUENCE_LENGTH, batch_size=cfg.TRAIN_BATCH_SIZE)
+        seq_length=cfg.MAX_SEQUENCE_LENGTH)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
     t1 = datetime.datetime.now()
     tf.logging.info('***** Finished training at {}; {} total time *****'.format(t1, t1 - t0))

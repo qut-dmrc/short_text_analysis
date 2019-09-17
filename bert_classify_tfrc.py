@@ -168,8 +168,8 @@ https://github.com/tensorflow/models/blob/ce237770a7e0c73081942a2861ede9b3a2e30c
 
 
 def create_classifier_dataset_bert_tf2(file_path,
+                                       params,
                                        seq_length,
-                                       batch_size,
                                        is_training=True,
                                        drop_remainder=True):
     """Creates input dataset from (tf)records files for train/eval."""
@@ -201,7 +201,7 @@ def create_classifier_dataset_bert_tf2(file_path,
         dataset = dataset.repeat()
 
     tf.logging.debug("Batching data")
-    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+    dataset = dataset.batch(params["batch_size"], drop_remainder=drop_remainder)
 
     tf.logging.debug("Prefetching data")
     dataset = dataset.prefetch(1024)
