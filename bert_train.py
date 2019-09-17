@@ -487,14 +487,7 @@ class ClassificationTrainingProcessor():
         self.train_df, self.validation_df = train_test_split(self.train_df, test_size=0.22)
 
     def get_train_examples(self):
-        # Upload train examples to GCS
-        examples = convert_dataframe_to_examples(self.train_df, vocab_file=self.vocab_file,
-                                                 do_lower_case=self.do_lower_case,
-                                                 label_list=self.classification_categories,
-                                                 max_seq_length=self.max_sequence_length,
-                                                 is_predicting=False)
-
-        return examples
+        return self._create_examples(self.train_df, "train")
 
     def get_dev_examples(self):
         return self._create_examples(self.validation_df, "dev")
