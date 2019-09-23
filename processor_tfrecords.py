@@ -66,10 +66,10 @@ def main():
 
         tf.logging.info(f"Reading from {file}.")
 
-        all_fields = cfg.TEXT_FIELDS + [cfg.ID_FIELD]
+        all_fields = cfg.TEXT_FIELDS + [cfg.ID_FIELD]  # don't include label field
 
         df = read_df_gcs(file)
-        df = preprocess_df(df, id_field=cfg.ID_FIELD, label_field=cfg.LABEL_FIELD, list_of_all_fields=all_fields,
+        df = preprocess_df(df, id_field=cfg.ID_FIELD, label_field=None, list_of_all_fields=all_fields,
                            list_of_text_fields=cfg.TEXT_FIELDS)
 
         tf.logging.info(f"Tokenizing {df.shape[0]} rows from {file} in parallel.")
