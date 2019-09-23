@@ -25,17 +25,19 @@ def main():
     """ Run predictions for an entire directory of tfrecords with a stored BERT model
 
     Usage:
-      bert_classify_tfrc.py --config=config_file [--tpu_name=name]
+      bert_classify_tfrc.py --config=config_file [--tpu_name=name] [-v]
 
     Options:
       -h --help                 Show this screen.
       --config=config_file.py   The configuration file with model parameters, data path, etc
       --tpu_name=name           The name of the TPU or cluster to run on
+      -v --verbose              Enable debug logging
       --version  Show version.
 
     """
 
     args = docopt(main.__doc__, version='DMRC BERT Classifier 0.1')
+    assert args['--train'] or args['--validate'], "No action provided. Must select train, validate, or both."
 
     import importlib.util
     spec = importlib.util.spec_from_file_location("classifier.config", args['--config'])
@@ -45,7 +47,7 @@ def main():
     date_prefix = format(
         datetime.datetime.utcnow().strftime('%Y%m%d%H%M'))
 
-    setup_logging_local(log_file_name=f'classify_{date_prefix}.txt')
+    setup_logging_local(log_file_name=f'train_{date_prefix}.txt', verbose=args['--verbose'])
 
     tf.logging.info('***** Task data directory: {} *****'.format(cfg.TASK_DATA_DIR))
     tf.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
@@ -93,11 +95,13 @@ def predict_all_in_dir(cfg, estimator):
     import os
     tf.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_SOURCE_RECORDS))
     tf.logging.info('***** Predictions save directory: {} *****'.format(cfg.PREDICT_OUTPUT_DIR))
-    # quieten tensorflow for the prediction run
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
     t0 = datetime.datetime.now()
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
+
+    # quieten tensorflow for the prediction run
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
     tf.logging.set_verbosity(tf.logging.WARN)
+
     for predict_file in tf.gfile.Glob(cfg.PREDICT_SOURCE_TFRECORDS):
         stem = Path(predict_file).stem
         predict_output_file_merged = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.merged.csv')

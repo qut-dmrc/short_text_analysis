@@ -36,8 +36,7 @@ def main():
 
 
     Usage:
-      bert_train.py --train --config=config_file [--tpu_name=name]
-      bert_train.py --validate --config=config_file [--tpu_name=name]
+      bert_train.py [--train] [--validate] --config=config_file [--tpu_name=name]
 
     Options:
       -h --help                 Show this screen.
@@ -269,7 +268,7 @@ def generate_random_validation(cfg, estimator):
 
     run_date = datetime.datetime.strftime(datetime.datetime.utcnow(), '%Y%m%d%H%M')
 
-    gcs_output_path = cfg.OUTPUT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
+    gcs_output_path = cfg.PREDICT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
     save_df_gcs(gcs_output_path, df_validate)
     tf.logging.info('Saved semi-supervised training set to: {}'.format(gcs_output_path))
 
@@ -658,7 +657,8 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
 
     if new_model:
-        init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/model.ckpt'
+        tf.logging.warning("Running only from BERT pre-trained model (not finetuned).")
+        init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/bert_model.ckpt'
     else:
         tf.logging.debug(f"Finding latest checkpoint (searching {cfg.OUTPUT_DIR})...")
         # No idea why this isn't working
