@@ -71,7 +71,7 @@ def main():
         if cfg.LABEL_FIELD not in df.columns:
             df[cfg.LABEL_FIELD] = None
 
-        df = preprocess_df(df, id_field=cfg.ID_FIELD, label_field=cfg.LABEL_FIELD, list_of_all_fields=cfg.ALL_FIELDS,
+        df = preprocess_df(df, id_field=cfg.ID_FIELD, label_field=None, list_of_all_fields=cfg.ALL_FIELDS,
                            list_of_text_fields=cfg.TEXT_FIELDS)
 
         tf.logging.info(f"Tokenizing {df.shape[0]} rows from {file} in parallel.")
