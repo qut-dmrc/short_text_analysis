@@ -315,8 +315,8 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
     """ Pre-process the dataframe - wrangle the columns into a standard format."""
     tf.logging.info('Starting to preprocess dataframe containing {} rows.'.format(df.shape[0]))
 
-    tf.logging.info(f"Found columns: {df.columns}")
-    tf.logging.info(f"Expecting columns: {list_of_all_fields}")
+    tf.logging.debug(f"Found columns: {df.columns}")
+    tf.logging.debug(f"Expecting columns: {list_of_all_fields}")
 
     assert all(
         elem in df.columns for elem in

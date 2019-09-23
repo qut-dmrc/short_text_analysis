@@ -14,11 +14,12 @@ def main():
     """ Convert JSON or CSV files to TFRecords to use with a BERT model
 
     Usage:
-      process_tfrecords.py --config=config_file <gcs_input_path>
+      process_tfrecords.py [-v] --config=config_file <gcs_input_path>
 
     Options:
       -h --help                 Show this screen.
       --config=config_file.py   The configuration file with model parameters, data path, etc
+      -v --verbose              Enhanced logging
       --version  Show version.
 
     """
@@ -32,7 +33,7 @@ def main():
     date_prefix = format(
         datetime.datetime.utcnow().strftime('%Y%m%d%H%M'))
 
-    setup_logging_local(log_file_name=f'process_tfrecords_log_{date_prefix}.txt')
+    setup_logging_local(log_file_name=f'process_tfrecords_log_{date_prefix}.txt', verbose=args['--verbose'])
 
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cfg.PATH_TO_GOOGLE_KEY
 
@@ -67,7 +68,7 @@ def main():
 
         all_fields = cfg.TEXT_FIELDS + [cfg.ID_FIELD]
 
-        df = read_df_gcs(file, [])
+        df = read_df_gcs(file)
         df = preprocess_df(df, id_field=cfg.ID_FIELD, label_field=cfg.LABEL_FIELD, list_of_all_fields=all_fields,
                            list_of_text_fields=cfg.TEXT_FIELDS)
 
