@@ -43,7 +43,7 @@ def main():
     tf.logging.info('***** TFRecords output directory: {} *****'.format(cfg.PREDICT_TFRECORDS))
 
     """ Convert all the input files to TensorFlow Records and save to GCS"""
-    glob_list = tf.gfile.Glob(args['gcs_input_path'])
+    glob_list = tf.gfile.Glob(args['<gcs_input_path>'])
 
     t0 = datetime.datetime.now()
 
