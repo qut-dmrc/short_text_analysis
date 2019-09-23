@@ -14,7 +14,7 @@ def main():
     """ Convert JSON or CSV files to TFRecords to use with a BERT model
 
     Usage:
-      process_tfrecords.py --config=config_file
+      process_tfrecords.py --config=config_file <gcs_input_path>
 
     Options:
       -h --help                 Show this screen.
@@ -22,7 +22,7 @@ def main():
       --version  Show version.
 
     """
-    args = docopt(main.__doc__, version='DMRC BERT Classifier 0.1')
+    args = docopt(main.__doc__, version='DMRC BERT preprocessor 0.1')
 
     import importlib.util
     spec = importlib.util.spec_from_file_location("classifier.config", args['--config'])
@@ -43,7 +43,7 @@ def main():
     tf.logging.info('***** TFRecords output directory: {} *****'.format(cfg.PREDICT_TFRECORDS))
 
     """ Convert all the input files to TensorFlow Records and save to GCS"""
-    glob_list = tf.gfile.Glob(cfg.GCS_INPUT_PATH)
+    glob_list = tf.gfile.Glob(args['gcs_input_path'])
 
     t0 = datetime.datetime.now()
 
