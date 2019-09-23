@@ -356,7 +356,8 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
     return df
 
 
-def convert_df_to_examples_mp(df, concurrency, vocab_file, do_lower_case, label_list, max_seq_length):
+def convert_df_to_examples_mp(df, concurrency, vocab_file, do_lower_case, label_list, max_seq_length,
+                              is_predicting=False):
     batch_size = int(math.ceil(df.shape[0] / concurrency))
     list_df = [df[i:i + batch_size] for i in range(0, df.shape[0], batch_size)]
     tf.logging.info('Chunked dataframe into {} chunks.'.format(len(list_df)))
@@ -364,7 +365,7 @@ def convert_df_to_examples_mp(df, concurrency, vocab_file, do_lower_case, label_
     with mp.Pool(processes=concurrency) as pool:
         # results = pool.map(convert_dataframe_to_examples, list_df)
         results = parmap.map(convert_dataframe_to_examples, list_df, vocab_file, do_lower_case, label_list,
-                             max_seq_length)
+                             max_seq_length, is_predicting)
 
     flattened_list_of_examples = list(itertools.chain(*results))
     tf.logging.info('Finished processing dataframe.')
