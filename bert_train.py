@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import parmap as parmap
 import tensorflow as tf
 from bert import run_classifier, modeling, optimization, tokenization
 from docopt import docopt
@@ -362,8 +363,8 @@ def convert_df_to_examples_mp(df, concurrency, vocab_file, do_lower_case, label_
 
     with mp.Pool(processes=concurrency) as pool:
         # results = pool.map(convert_dataframe_to_examples, list_df)
-        results = pool.map(convert_dataframe_to_examples, list_df, vocab_file, do_lower_case, label_list,
-                           max_seq_length)
+        results = parmap.map(convert_dataframe_to_examples, list_df, vocab_file, do_lower_case, label_list,
+                             max_seq_length)
 
     flattened_list_of_examples = list(itertools.chain(*results))
     tf.logging.info('Finished processing dataframe.')
