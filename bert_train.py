@@ -336,7 +336,7 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
     else:
         df['label'] = ""
 
-    if is_string_dtype(df[label_field]):
+    if label_field and is_string_dtype(df[label_field]):
         df[label_field] = df[label_field].str.lower()
 
     df['guid'] = df[id_field]
