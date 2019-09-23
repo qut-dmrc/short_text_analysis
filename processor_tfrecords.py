@@ -73,7 +73,9 @@ def main():
                            list_of_text_fields=cfg.TEXT_FIELDS)
 
         tf.logging.info(f"Tokenizing {df.shape[0]} rows from {file} in parallel.")
-        tf_examples = convert_df_to_examples_mp(df, concurrency=cfg.CONCURRENCY)
+        tf_examples = convert_df_to_examples_mp(df, concurrency=cfg.CONCURRENCY, vocab_file=cfg.VOCAB_FILE,
+                                                do_lower_case=True, label_list=cfg.CLASSIFICATION_CATEGORIES,
+                                                max_seq_length=cfg.MAX_SEQUENCE_LENGTH)
 
         # save examples asynchronously
         threading.Thread(target=save_examples, args=[tf_examples, gcs_output_file, gcs_output_file_ids]).start()
