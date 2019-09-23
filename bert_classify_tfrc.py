@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from bert.run_classifier import file_based_input_fn_builder
+#from bert.run_classifier import file_based_input_fn_builder
 from docopt import docopt
 
 import bert_train
@@ -49,26 +49,26 @@ def main():
 
     setup_logging_local(log_file_name=f'train_{date_prefix}.txt', verbose=args['--verbose'])
 
-    tf.logging.info('***** Task data directory: {} *****'.format(cfg.TASK_DATA_DIR))
-    tf.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
+    tf.compat.v1.logging.info('***** Task data directory: {} *****'.format(cfg.TASK_DATA_DIR))
+    tf.compat.v1.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
     assert cfg.BUCKET, 'Must specify an existing GCS bucket name'
-    tf.logging.info('***** Model output directory: {} *****'.format(cfg.OUTPUT_DIR))
-    tf.logging.info('***** Vocabulary file: {} *****'.format(cfg.VOCAB_FILE))
-    tf.logging.info('***** Predictions directory: {} *****'.format(cfg.PREDICT_DIR))
+    tf.compat.v1.logging.info('***** Model output directory: {} *****'.format(cfg.OUTPUT_DIR))
+    tf.compat.v1.logging.info('***** Vocabulary file: {} *****'.format(cfg.VOCAB_FILE))
+    tf.compat.v1.logging.info('***** Predictions directory: {} *****'.format(cfg.PREDICT_DIR))
 
     tpu_name = args['--tpu_name']
 
     if tpu_name:
         use_tpu = True
-        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_name)
+        tpu_cluster_resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu_name)
         tpu_address = tpu_cluster_resolver.get_master()
 
-        tf.logging.info("TPU address: {}".format(tpu_address))
+        tf.compat.v1.logging.info("TPU address: {}".format(tpu_address))
 
-        with tf.Session(cfg.TPU_ADDRESS) as session:
+        with tf.compat.v1.Session(cfg.TPU_ADDRESS) as session:
             # Upload credentials to TPU.
             if "COLAB_TPU_ADDR" in os.environ:
-                tf.logging.info(f'TPU devices: {session.list_devices()}')
+                tf.compat.v1.logging.info(f'TPU devices: {session.list_devices()}')
 
                 with open('/content/adc.json', 'r') as f:
                     auth_info = json.load(f)
@@ -81,9 +81,9 @@ def main():
 
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cfg.PATH_TO_GOOGLE_KEY
 
-    tf.logging.info("Tensorflow version: {}".format(tf.__version__))
+    tf.compat.v1.logging.info("Tensorflow version: {}".format(tf.__version__))
 
-    tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
+    tf.io.gfile.makedirs(cfg.OUTPUT_DIR)
 
     estimator = bert_train.define_model(cfg, tpu_address, use_tpu)
 
@@ -93,40 +93,40 @@ def main():
 def predict_all_in_dir(cfg, estimator):
     """# Run predictions on all files"""
     import os
-    tf.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_SOURCE_RECORDS))
-    tf.logging.info('***** Predictions save directory: {} *****'.format(cfg.PREDICT_OUTPUT_DIR))
+    tf.compat.v1.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_SOURCE_RECORDS))
+    tf.compat.v1.logging.info('***** Predictions save directory: {} *****'.format(cfg.PREDICT_OUTPUT_DIR))
     t0 = datetime.datetime.now()
-    tf.logging.info('***** Started predictions at {} *****'.format(t0))
+    tf.compat.v1.logging.info('***** Started predictions at {} *****'.format(t0))
 
     # quieten tensorflow for the prediction run
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
-    tf.logging.set_verbosity(tf.logging.WARN)
+    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.WARN)
 
-    for predict_file in tf.gfile.Glob(cfg.PREDICT_SOURCE_TFRECORDS):
+    for predict_file in tf.io.gfile.glob(cfg.PREDICT_SOURCE_TFRECORDS):
         stem = Path(predict_file).stem
         predict_output_file_merged = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.merged.csv')
         predict_output_file_lock = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.LOCK')
 
-        if tf.gfile.Exists(predict_output_file_merged) or tf.gfile.Exists(predict_output_file_lock):
-            tf.logging.warn(
+        if tf.io.gfile.exists(predict_output_file_merged) or tf.io.gfile.exists(predict_output_file_lock):
+            tf.compat.v1.logging.warn(
                 "Output file {} already exists. Skipping input from {}.".format(predict_output_file_merged,
                                                                                 predict_file))
             continue
-        with tf.gfile.Open(predict_output_file_lock, mode="w") as f:
+        with tf.io.gfile.GFile(predict_output_file_lock, mode="w") as f:
             f.write('Locked at {}'.format(t0))
 
         df_merged = predict_single_file(cfg, estimator, predict_file)
         save_df_gcs(predict_output_file_merged, df_merged)
-        tf.gfile.Remove(predict_output_file_lock)
+        tf.io.gfile.remove(predict_output_file_lock)
 
     tz = datetime.datetime.now()
-    tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
-    tf.logging.set_verbosity(tf.logging.INFO)
+    tf.compat.v1.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
+    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
 
 def predict_single_file(cfg, estimator, predict_file):
     t1 = datetime.datetime.now()
-    tf.logging.warn("Predicting from {}.".format(predict_file))
+    tf.compat.v1.logging.warn("Predicting from {}.".format(predict_file))
     # Warning: According to tpu_estimator.py Prediction on TPU is an
     # experimental feature and hence not supported here
     #  raise ValueError("Prediction in TPU not supported")
@@ -144,7 +144,7 @@ def predict_single_file(cfg, estimator, predict_file):
                         'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
     # Here results are stored as an ordered list - need to get the ID back from the ids.txt file.
     tz = datetime.datetime.now()
-    tf.logging.warn('***** Finished predictions at {}; {} file time *****'.format(tz, tz - t1))
+    tf.compat.v1.logging.warn('***** Finished predictions at {}; {} file time *****'.format(tz, tz - t1))
     predict_file_ids = predict_file + '.ids.txt'
     df_ids = read_df_gcs(predict_file_ids, header_rows=None)
     df_ids.columns = ['guid']

@@ -17,21 +17,21 @@ PATH_TO_GOOGLE_KEY = '/Users/nic/src/platformgovernance/nicanalysis-c0df8a860fb.
 #   cased_L-12_H-768_A-12: cased BERT large model
 BERT_MODEL = 'uncased_L-24_H-1024_A-16'
 BERT_PRETRAINED_DIR = 'gs://cloud-tpu-checkpoints/bert/' + BERT_MODEL
-tf.logging.info('***** Task data directory: {} *****'.format(TASK_DATA_DIR))
-tf.logging.info('***** BERT pretrained directory: {} *****'.format(BERT_PRETRAINED_DIR))
+tf.compat.v1.logging.info('***** Task data directory: {} *****'.format(TASK_DATA_DIR))
+tf.compat.v1.logging.info('***** BERT pretrained directory: {} *****'.format(BERT_PRETRAINED_DIR))
 
 BUCKET = ''  # Add your GCS bucket for output
 assert BUCKET, 'Must specify an existing GCS bucket name'
 OUTPUT_DIR = 'gs://{}/{}/bert_models/'.format(BUCKET, TASK)
-tf.logging.info('***** Model output directory: {} *****'.format(OUTPUT_DIR))
+tf.compat.v1.logging.info('***** Model output directory: {} *****'.format(OUTPUT_DIR))
 
 TRAINING_SETS = 'gs://{}/{}/training/*.csv'.format(BUCKET, TASK)
 
 PREDICT_DIR = 'gs://{}/{}/predictions/'.format(BUCKET, TASK)
-tf.logging.info('***** Predictions directory: {} *****'.format(PREDICT_DIR))
+tf.compat.v1.logging.info('***** Predictions directory: {} *****'.format(PREDICT_DIR))
 
 VOCAB_FILE = 'gs://platform_governance_analysis/bert/BERT_uncased_L-24_H-1024_A-16_vocab-NS.txt'
-tf.logging.info('***** Vocabulary file: {} *****'.format(VOCAB_FILE))
+tf.compat.v1.logging.info('***** Vocabulary file: {} *****'.format(VOCAB_FILE))
 
 DO_LOWER_CASE = BERT_MODEL.startswith('uncased')
 

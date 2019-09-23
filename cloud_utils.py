@@ -9,7 +9,7 @@ from tensorflow.python.lib.io import file_io
 
 
 def save_df_gcs(gcs_path, df, save_csv=True):
-    tf.logging.info('saving dataframe to GCS: '.format(gcs_path))
+    tf.compat.v1.logging.info('saving dataframe to GCS: '.format(gcs_path))
     with file_io.FileIO(gcs_path, mode='w') as file_stream:
         if save_csv:
             df.to_csv(file_stream, encoding='utf-8', quoting=csv.QUOTE_ALL)
@@ -22,7 +22,7 @@ def read_df_gcs(gcs_path, list_of_all_fields=None, header_rows=0):
     :param gcs_path: a single input file
     :param list_of_all_fields: all of the fields to read from the file (only if CSV)
     """
-    tf.logging.info('downloading file from {}'.format(gcs_path))
+    tf.compat.v1.logging.info('downloading file from {}'.format(gcs_path))
 
     gzip = (gcs_path[-2:] == 'gz')
     json = (gcs_path[-4:] == 'json' or gcs_path[-7:] == 'json.gz')
@@ -74,5 +74,5 @@ def setup_logging_local(log_file_name, verbose=False):
     # Set tensorflow verbosity
     if verbose:
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'  # or any {'0', '1', '2'}
-        tf.logging.set_verbosity(tf.logging.DEBUG)
-        tf.logging.debug("Set log level to debug.")
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
+        tf.compat.v1.logging.debug("Set log level to debug.")
