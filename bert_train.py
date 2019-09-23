@@ -670,28 +670,39 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         # TODO: Check if we need to specify TPU distribution strategy
         # dist_strategy = tf.distribute.experimental.TPUStrategy(tpu_cluster_resolver)
 
-    if cfg.NUM_GPU_CORES >= 2:
-        # dist_strategy = tf.distribute.MirroredStrategy()
-        # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.NUM_GPU_CORES)
+        run_config = tf.contrib.tpu.RunConfig(
+            cluster=tpu_cluster_resolver,
+            model_dir=cfg.OUTPUT_DIR,
+            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+            train_distribute=dist_strategy,
+            eval_distribute=dist_strategy,
+            tpu_config=tf.contrib.tpu.TPUConfig(
+                iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
+                num_shards=cfg.NUM_TPU_CORES,
+                per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
+    else:
 
-        dist_strategy = tf.contrib.distribute.MirroredStrategy(
-            num_gpus=cfg.NUM_GPU_CORES,
-            cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.NUM_GPU_CORES),
+        if cfg.NUM_GPU_CORES >= 2:
+            # dist_strategy = tf.distribute.MirroredStrategy()
+            # dist_strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=cfg.NUM_GPU_CORES)
+
+            dist_strategy = tf.contrib.distribute.MirroredStrategy(
+                num_gpus=cfg.NUM_GPU_CORES,
+                cross_device_ops=AllReduceCrossDeviceOps('nccl', num_packs=cfg.NUM_GPU_CORES),
+            )
+            tf.logging.info(f"Running on {cfg.NUM_GPU_CORES} GPU cores using Mirrored strategy.")
+
+            gpu_options = tf.GPUOptions(allow_growth=True)
+            session_config = tf.ConfigProto(gpu_options=gpu_options)
+
+        tf.logging.debug(f"Setting run_config...")
+        run_config = tf.estimator.RunConfig(
+            model_dir=cfg.OUTPUT_DIR,
+            session_config=session_config,
+            save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+            train_distribute=dist_strategy,
+            eval_distribute=dist_strategy
         )
-        tf.logging.info(f"Running on {cfg.NUM_GPU_CORES} GPU cores using Mirrored strategy.")
-
-    tf.logging.debug(f"Setting run_config...")
-
-    run_config = tf.contrib.tpu.RunConfig(
-        cluster=tpu_cluster_resolver,
-        model_dir=cfg.OUTPUT_DIR,
-        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
-        train_distribute=dist_strategy,
-        eval_distribute=dist_strategy,
-        tpu_config=tf.contrib.tpu.TPUConfig(
-            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-            num_shards=cfg.NUM_TPU_CORES,
-            per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
 
     tf.logging.debug(f"Finding latest checkpoint...")
     if new_model:
@@ -714,17 +725,26 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         num_warmup_steps=num_warmup_steps,
         use_tpu=use_tpu,
         use_one_hot_embeddings=True)
-    # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
 
-    tf.logging.debug(f"Creating estimator...")
+    if use_tpu:
+        # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
 
-    estimator = tf.contrib.tpu.TPUEstimator(
-        use_tpu=use_tpu,
-        model_fn=model_fn,
-        config=run_config,
-        train_batch_size=cfg.TRAIN_BATCH_SIZE,
-        eval_batch_size=cfg.EVAL_BATCH_SIZE,
-        predict_batch_size=cfg.PREDICT_BATCH_SIZE)
+        tf.logging.debug(f"Creating TPU estimator...")
+
+        estimator = tf.contrib.tpu.TPUEstimator(
+            use_tpu=use_tpu,
+            model_fn=model_fn,
+            config=run_config,
+            train_batch_size=cfg.TRAIN_BATCH_SIZE,
+            eval_batch_size=cfg.EVAL_BATCH_SIZE,
+            predict_batch_size=cfg.PREDICT_BATCH_SIZE)
+    else:
+        tf.logging.debug(f"Creating GPU/CPU estimator...")
+
+        estimator = tf.estimator.Estimator(
+            model_fn=model_fn,
+            config=run_config,
+        )
     return estimator
 
 
