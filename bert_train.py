@@ -565,7 +565,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
                      use_one_hot_embeddings):
     """Returns `model_fn` closure for TPUEstimator."""
 
-    def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
+    def model_fn(features, labels, mode, params=None):  # pylint: disable=unused-argument
         """The `model_fn` for TPUEstimator."""
 
         tf.logging.info("*** Features ***")
@@ -694,6 +694,8 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
 
             gpu_options = tf.GPUOptions(allow_growth=True)
             session_config = tf.ConfigProto(gpu_options=gpu_options)
+        else:
+            session_config = None
 
         tf.logging.debug(f"Setting run_config...")
         run_config = tf.estimator.RunConfig(
@@ -744,6 +746,7 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         estimator = tf.estimator.Estimator(
             model_fn=model_fn,
             config=run_config,
+            params={'batch_size': cfg.TRAIN_BATCH_SIZE}
         )
     return estimator
 
