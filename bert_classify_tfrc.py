@@ -67,7 +67,7 @@ def main():
 
             tf.logging.info("TPU address: {}".format(tpu_address))
 
-            with tf.Session(cfg.TPU_ADDRESS) as session:
+            with tf.Session(tpu_address) as session:
                 # Upload credentials to TPU.
                 if "COLAB_TPU_ADDR" in os.environ:
                     tf.logging.info(f'TPU devices: {session.list_devices()}')
