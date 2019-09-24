@@ -11,6 +11,8 @@ TASK_DATA_DIR = 'classify_data/' + TASK
 # Google JSON service account key for accessing GCS and TPUs
 PATH_TO_GOOGLE_KEY = '/Users/nic/src/platformgovernance/nicanalysis-c0df8a860fb.json'
 
+TPU_NAMES = ['platform1', 'platform2', 'platform3', 'platform4', 'platform5']
+
 # Available pretrained model checkpoints:
 #   uncased_L-12_H-768_A-12: uncased BERT base model
 #   uncased_L-24_H-1024_A-16: uncased BERT large model

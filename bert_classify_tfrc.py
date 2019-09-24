@@ -5,6 +5,7 @@
 import datetime
 import json
 import os
+from multiprocessing import Queue
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ import pandas as pd
 import tensorflow as tf
 from bert.run_classifier import file_based_input_fn_builder
 from docopt import docopt
+from parmap import parmap
 
 import bert_train
 from cloud_utils import read_df_gcs, save_df_gcs, setup_logging_local
@@ -30,7 +32,6 @@ def main():
     Options:
       -h --help                 Show this screen.
       --config=config_file.py   The configuration file with model parameters, data path, etc
-      --tpu_name=name           The name of the TPU or cluster to run on
       -v --verbose              Enable debug logging
       --version  Show version.
 
@@ -56,26 +57,29 @@ def main():
     tf.logging.info('***** Vocabulary file: {} *****'.format(cfg.VOCAB_FILE))
     tf.logging.info('***** Predictions directory: {} *****'.format(cfg.PREDICT_DIR))
 
-    tpu_name = args['--tpu_name']
+    tpu_queue = Queue()
 
-    if tpu_name:
+    if cfg.TPU_NAMES:
         use_tpu = True
-        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_name)
-        tpu_address = tpu_cluster_resolver.get_master()
+        for tpu_name in cfg.TPU_NAMES:
+            tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_name)
+            tpu_address = tpu_cluster_resolver.get_master()
 
-        tf.logging.info("TPU address: {}".format(tpu_address))
+            tf.logging.info("TPU address: {}".format(tpu_address))
 
-        with tf.Session(cfg.TPU_ADDRESS) as session:
-            # Upload credentials to TPU.
-            if "COLAB_TPU_ADDR" in os.environ:
-                tf.logging.info(f'TPU devices: {session.list_devices()}')
+            with tf.Session(cfg.TPU_ADDRESS) as session:
+                # Upload credentials to TPU.
+                if "COLAB_TPU_ADDR" in os.environ:
+                    tf.logging.info(f'TPU devices: {session.list_devices()}')
 
-                with open('/content/adc.json', 'r') as f:
-                    auth_info = json.load(f)
-                tf.contrib.cloud.configure_gcs(session, credentials=auth_info)
+                    with open('/content/adc.json', 'r') as f:
+                        auth_info = json.load(f)
+                    tf.contrib.cloud.configure_gcs(session, credentials=auth_info)
+
+            tpu_queue.put(tpu_address)
     else:
         use_tpu = False
-        tpu_address = None
+        tpu_queue = None
 
         # auth to Google
 
@@ -85,12 +89,10 @@ def main():
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
-    estimator = bert_train.define_model(cfg, tpu_address, use_tpu)
-
-    predict_all_in_dir(cfg, estimator)
+    predict_all_in_dir(cfg, use_tpu, tpu_queue)
 
 
-def predict_all_in_dir(cfg, estimator):
+def predict_all_in_dir(cfg, tpu_queue=None):
     """# Run predictions on all files"""
     import os
     tf.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_SOURCE_RECORDS))
@@ -102,7 +104,23 @@ def predict_all_in_dir(cfg, estimator):
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
     tf.logging.set_verbosity(tf.logging.WARN)
 
-    for predict_file in tf.gfile.Glob(cfg.PREDICT_SOURCE_TFRECORDS):
+    list_globs = tf.gfile.Glob(cfg.PREDICT_SOURCE_TFRECORDS)
+
+    if tpu_queue:
+        num_processes = len(cfg.TPU_NAMES)
+    else:
+        num_processes = cfg.CONCURRENCY
+
+    # multiprocess pool
+    parmap.starmap(predict_single_file_wrapper, list_globs, cfg, tpu_queue, pm_processes=num_processes)
+
+    tz = datetime.datetime.now()
+    tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
+    tf.logging.set_verbosity(tf.logging.INFO)
+
+
+def predict_single_file_wrapper(predict_file, cfg, tpu_queue=None):
+    try:
         stem = Path(predict_file).stem
         predict_output_file_merged = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.merged.csv')
         predict_output_file_lock = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.LOCK')
@@ -111,17 +129,27 @@ def predict_all_in_dir(cfg, estimator):
             tf.logging.warn(
                 "Output file {} already exists. Skipping input from {}.".format(predict_output_file_merged,
                                                                                 predict_file))
-            continue
+            return
         with tf.gfile.Open(predict_output_file_lock, mode="w") as f:
-            f.write('Locked at {}'.format(t0))
+            f.write('Locked at {}'.format(datetime.datetime.utcnow()))
 
+        tpu_address = None
+        use_tpu = False
+        if tpu_queue:
+            tf.logging.warn("Trying to obtain TPU address")
+            tpu_address = tpu_queue.get(block=True)
+            tf.logging.warn("Got TPU address: {}".format(tpu_address))
+            use_tpu = True
+
+        estimator = bert_train.define_model(cfg, tpu_address, use_tpu)
         df_merged = predict_single_file(cfg, estimator, predict_file)
         save_df_gcs(predict_output_file_merged, df_merged)
         tf.gfile.Remove(predict_output_file_lock)
 
-    tz = datetime.datetime.now()
-    tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
-    tf.logging.set_verbosity(tf.logging.INFO)
+    finally:
+        if tpu_address and tpu_queue:
+            # Make the TPU available again for other processes
+            tpu_queue.put(tpu_address)
 
 
 def predict_single_file(cfg, estimator, predict_file):
