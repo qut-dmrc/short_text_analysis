@@ -45,7 +45,6 @@ def main():
       --train                   Run fine-tuning from training datasets - Beware, this deletes
                                 any existing fine-tuned model
       --validate                Generate a validation dataset from real data
-      --tpu_name=name           The name of the TPU or cluster to run on
       --version  Show version.
 
     """
@@ -69,10 +68,9 @@ def main():
     tf.logging.info('***** Vocabulary file: {} *****'.format(cfg.VOCAB_FILE))
     tf.logging.info('***** Predictions directory: {} *****'.format(cfg.PREDICT_DIR))
 
-    tpu_name = args['--tpu_name']
-
-    if tpu_name:
+    if cfg.TPU_NAMES:
         use_tpu = True
+        tpu_name = cfg.TPU_NAMES[0]  # Just pick the first one for training
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_name)
         tpu_address = tpu_cluster_resolver.get_master()
 
