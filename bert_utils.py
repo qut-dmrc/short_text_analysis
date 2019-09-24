@@ -7,10 +7,10 @@ import re
 
 import pandas as pd
 import tensorflow as tf
-from bert import tokenization, run_classifier
 from pandas.core.dtypes.common import is_numeric_dtype, is_string_dtype
 
 from cloud_utils import read_df_gcs
+from tensorflow_models.official.nlp.bert import tokenization, run_classifier
 
 
 def convert_numeric_label_to_string(x, list_of_categories):

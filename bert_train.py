@@ -6,20 +6,27 @@ This module contains functions to train a simple multi-label classification proc
 import datetime
 import functools
 import json
+import math
 import os
 import random
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import tensorflow as tf
-from bert import run_classifier, modeling, optimization
 from docopt import docopt
 from sklearn.model_selection import train_test_split
 
+os.environ['PYTHONPATH'] += f":{os.getcwd()}/tensorflow_models"
+from official.nlp import bert_modeling as modeling
+from tensorflow_models.official.nlp import bert_models
+from tensorflow_models.official.nlp import optimization
+from tensorflow_models.official.nlp.bert import input_pipeline
+from tensorflow_models.official.nlp.bert import model_saving_utils
+from tensorflow_models.official.utils.misc import keras_utils
+from tensorflow_models.official.utils.misc import tpu_lib
+
 import bert_classify_tfrc
-from bert_utils import read_training_data_gcs, preprocess_df, convert_dataframe_to_features, \
-    convert_dataframe_to_examples, save_examples
+from bert_utils import read_training_data_gcs, preprocess_df, convert_dataframe_to_examples, save_examples
 from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
 
 
@@ -90,13 +97,13 @@ def main():
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cfg.PATH_TO_GOOGLE_KEY
 
         import subprocess
-        cfg.num_gpu_cores = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+        try:
+            cfg.num_gpu_cores = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+        except:
+            tf.compat.v1.logging.warn("Unable to get number of GPU cores. Falling back to CPU.")
+            cfg.num_gpu_cores = 0
 
     tf.compat.v1.logging.info("Tensorflow version: {}".format(tf.__version__))
-
-    tf.io.gfile.makedirs(cfg.OUTPUT_DIR)
-
-    estimator = None
 
     if args['--train']:
         try:
@@ -111,24 +118,32 @@ def main():
         # Train the model: Uses all training sets in the GCS bucket
         # - anything labeled 'training/*.csv'
 
-        create_training_sets(cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
+        num_train_examples, num_eval_examples, num_validation_examples = create_training_sets(
+            cfg.TRAINING_SETS, cfg.ALL_FIELDS, cfg.LABEL_FIELD,
                             cfg.CLASSIFICATION_CATEGORIES, cfg.ID_FIELD,
                             cfg.TEXT_FIELDS, cfg.VOCAB_FILE, cfg.MAX_SEQUENCE_LENGTH,
-                            cfg.DO_LOWER_CASE)
+            cfg.DO_LOWER_CASE, cfg.TRAIN_TFRECORDS, cfg.TEST_TFRECORDS, cfg.VALIDATION_TFRECORDS)
 
         label_list = cfg.CLASSIFICATION_CATEGORIES
 
         num_train_steps = int(
-            len(training_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
+            num_train_examples / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
         num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
 
-        estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
+        # Users should always run this script under TF 2.x
+        assert tf.version.VERSION.startswith('2.')
 
-        train_classifier(cfg, estimator, num_train_steps, train_examples)
-
-        eval_classifier(cfg, estimator, processor, use_tpu)
-
-        test_classifier(cfg, estimator, label_list, processor)
+        strategy = None
+        if cfg.STRATEGY_TYPE == 'mirror':
+            strategy = tf.distribute.MirroredStrategy()
+        elif cfg.STRATEGY_TYPE == 'tpu':
+            # Initialize TPU System.
+            cluster_resolver = tpu_lib.tpu_initialize(cfg.TPU_ADDRESS)
+            strategy = tf.distribute.experimental.TPUStrategy(cluster_resolver)
+        else:
+            raise ValueError('The distribution strategy type is not supported: %s' %
+                             cfg.STRATEGY_TYPE)
+        run_bert(cfg, strategy, 'train_and_eval', num_train_examples, num_eval_examples)
 
     if args['--validate']:
         # Load the stored model if we have one and didn't just train it.
@@ -179,7 +194,8 @@ def generate_random_validation(cfg, estimator):
 
 
 def create_training_sets(training_sets, all_fields, label_field, classification_categories, id_field, text_fields,
-                 vocab_file, max_sequence_length, do_lower_case):
+                         vocab_file, max_sequence_length, do_lower_case, train_tfrecords_path, test_tfrecords_path,
+                         validation_tfrecords_path):
     df = read_training_data_gcs(training_sets, all_fields, label_field, classification_categories)
 
     df = df[df[label_field].isin(classification_categories)]
@@ -208,10 +224,11 @@ def create_training_sets(training_sets, all_fields, label_field, classification_
     validation_guids_and_examples = convert_dataframe_to_examples(validation_df, vocab_file, do_lower_case, classification_categories,
                              max_seq_length=max_sequence_length, is_predicting=False)
 
-    save_examples(train_guids_and_examples, cfg.OUTPUT_DIR + '/train.tfrecords', cfg.OUTPUT_DIR + 'train.tfrecords.ids.txt')
-    save_examples(test_guids_and_examples, cfg.OUTPUT_DIR + '/test.tfrecords', cfg.OUTPUT_DIR + 'test.tfrecords.ids.txt')
-    save_examples(validation_guids_and_examples, cfg.OUTPUT_DIR + '/validate.tfrecords', cfg.OUTPUT_DIR + 'validate.tfrecords.ids.txt')
+    save_examples(train_guids_and_examples, train_tfrecords_path, train_tfrecords_path + '.ids.txt')
+    save_examples(test_guids_and_examples, test_tfrecords_path, test_tfrecords_path + '.ids.txt')
+    save_examples(validation_guids_and_examples, validation_tfrecords_path, validation_tfrecords_path + '.ids.txt')
 
+    return len(train_guids_and_examples), len(test_guids_and_examples), len(validation_guids_and_examples)
 
 
 def get_loss_fn(num_classes, loss_factor=1.0):
@@ -234,8 +251,8 @@ def get_loss_fn(num_classes, loss_factor=1.0):
 
 def run_customized_training(strategy,
                             bert_config,
-                            input_meta_data,
                             model_dir,
+                            cfg,
                             epochs,
                             steps_per_epoch,
                             steps_per_loop,
@@ -247,19 +264,19 @@ def run_customized_training(strategy,
                             custom_callbacks=None,
                             run_eagerly=False):
   """Run BERT classifier training using low-level API."""
-  max_seq_length = input_meta_data['max_seq_length']
-  num_classes = input_meta_data['num_labels']
+  max_seq_length = cfg.MAX_SEQUENCE_LENGTH
+  num_classes = len(cfg.CLASSIFICATION_CATEGORIES)
 
   train_input_fn = functools.partial(
       input_pipeline.create_classifier_dataset,
-      FLAGS.train_data_path,
+      cfg.TRAIN_TFRECORDS,
       seq_length=max_seq_length,
-      batch_size=FLAGS.train_batch_size)
+      batch_size=cfg.TRAIN_BATCH_SIZE)
   eval_input_fn = functools.partial(
       input_pipeline.create_classifier_dataset,
-      FLAGS.eval_data_path,
+      cfg.TEST_TFRECORDS,
       seq_length=max_seq_length,
-      batch_size=FLAGS.eval_batch_size,
+      batch_size=cfg.TEST_BATCH_SIZE,
       is_training=False,
       drop_remainder=False)
 
@@ -270,7 +287,7 @@ def run_customized_training(strategy,
                                      max_seq_length))
     classifier_model.optimizer = optimization.create_optimizer(
         initial_lr, steps_per_epoch * epochs, warmup_steps)
-    if FLAGS.fp16_implementation == 'graph_rewrite':
+    if cfg.FP16_IMPLEMENTATION == 'graph_rewrite':
       # Note: when flags_obj.fp16_implementation == "graph_rewrite", dtype as
       # determined by flags_core.get_tf_dtype(flags_obj) would be 'float32'
       # which will ensure tf.compat.v2.keras.mixed_precision and
@@ -283,7 +300,7 @@ def run_customized_training(strategy,
   loss_fn = get_loss_fn(
       num_classes,
       loss_factor=1.0 /
-      strategy.num_replicas_in_sync if FLAGS.scale_loss else 1.0)
+                  strategy.num_replicas_in_sync if cfg.SCALE_LOSS else 1.0)
 
   # Defines evaluation metrics function, which will create metrics in the
   # correct device and strategy scope.
@@ -309,7 +326,52 @@ def run_customized_training(strategy,
       run_eagerly=run_eagerly)
 
 
-def export_classifier(model_export_path, input_meta_data):
+def run_bert(cfg, strategy, mode, num_training_examples, num_eval_examples):
+    """Run BERT training."""
+    if mode == 'export_only':
+        export_classifier(cfg.OUTPUT_DIR, cfg)
+        return
+
+    if mode != 'train_and_eval':
+        raise ValueError('Unsupported mode is specified: %s' % mode)
+    # Enables XLA in Session Config. Should not be set for TPU.
+    keras_utils.set_config_v2(cfg.ENABLE_XLA)
+
+    bert_config = modeling.BertConfig.from_json_file(cfg.CONFIG_FILE)
+    epochs = cfg.NUM_TRAIN_EPOCHS
+    steps_per_epoch = int(num_training_examples / cfg.TRAIN_BATCH_SIZE)
+    warmup_steps = int(epochs * num_training_examples * 0.1 / cfg.TRAIN_BATCH_SIZE)
+    eval_steps = int(
+        math.ceil(num_eval_examples / cfg.EVAL_BATCH_SIZE))
+
+    if not strategy:
+        raise ValueError('Distribution strategy has not been specified.')
+    # Runs customized training loop.
+    logging.info('Training using customized training loop TF 2.0 with distrubuted'
+                 'strategy.')
+    use_remote_tpu = (cfg.STRATEGY_TYPE == 'tpu' and cfg.USE_TPU)
+    trained_model = run_customized_training(
+        strategy,
+        bert_config,
+        cfg,
+        cfg.OUTPUT_DIR,
+        epochs,
+        steps_per_epoch,
+        cfg.ITERATIONS_PER_LOOP,
+        eval_steps,
+        warmup_steps,
+        cfg.LEARNING_RATE,
+        cfg.INIT_CHECKPOINT,
+        use_remote_tpu=use_remote_tpu,
+        run_eagerly=cfg.RUN_EAGERLY)
+
+    with tf.device(tpu_lib.get_primary_cpu_task(use_remote_tpu)):
+        model_saving_utils.export_bert_model(
+            cfg.OUTPUT_DIR, model=trained_model)
+    return trained_model
+
+
+def export_classifier(model_export_path, cfg):
   """Exports a trained model as a `SavedModel` for inference.
   Args:
     model_export_path: a string specifying the path to the SavedModel directory.
@@ -319,13 +381,13 @@ def export_classifier(model_export_path, input_meta_data):
   """
   if not model_export_path:
     raise ValueError('Export path is not specified: %s' % model_export_path)
-  bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
+  bert_config = modeling.BertConfig.from_json_file(cfg.CONFIG_FILE)
 
   classifier_model = bert_models.classifier_model(
-      bert_config, tf.float32, input_meta_data['num_labels'],
-      input_meta_data['max_seq_length'])[0]
+      bert_config, tf.float32, len(cfg.CLASSIFICATION_CATEGORIES),
+      cfg.MAX_SEQUENCE_LENGTH)[0]
   model_saving_utils.export_bert_model(
-      model_export_path, model=classifier_model, checkpoint_dir=FLAGS.model_dir)
+      model_export_path, model=classifier_model, checkpoint_dir=cfg.OUTPUT_DIR)
 
 
 
