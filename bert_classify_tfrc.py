@@ -103,7 +103,11 @@ def predict_all_in_dir(cfg, tpu_queue=None):
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
     tf.logging.set_verbosity(tf.logging.WARN)
 
-    list_globs = tf.gfile.Glob(cfg.PREDICT_TFRECORDS)
+    tfrecords_path = cfg.PREDICT_TFRECORDS
+    if tfrecords_path[:-9] != 'tf_record' or tfrecords_path[:-3] != 'tfr' or tfrecords_path[:-1] == '/':
+        tfrecords_path = tfrecords_path + "*.tf_record"
+
+    list_globs = tf.gfile.Glob(tfrecords_path)
 
     if tpu_queue:
         num_processes = len(cfg.TPU_NAMES)
@@ -111,6 +115,7 @@ def predict_all_in_dir(cfg, tpu_queue=None):
         num_processes = cfg.CONCURRENCY
 
     # multiprocess pool
+    tf.logging.warn(f"Starting predictions on {len(list_globs)} files with {num_processes} processors / TPUs")
     parmap.starmap(predict_single_file_wrapper, list_globs, cfg, tpu_queue, pm_processes=num_processes)
 
     tz = datetime.datetime.now()
