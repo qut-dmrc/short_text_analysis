@@ -126,7 +126,7 @@ def main():
             len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
         num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
 
-        estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps)
+        estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps, new_model=True)
 
         train_classifier(cfg, estimator, num_train_steps, train_examples)
 
