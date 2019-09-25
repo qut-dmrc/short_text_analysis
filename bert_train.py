@@ -701,7 +701,7 @@ def define_model(task_metadata, tpu_address, use_tpu, num_train_steps=-1, num_wa
         tf.logging.warning("Running only from BERT pre-trained model (not finetuned).")
         init_checkpoint = task_metadata['bert_pretrained_dir'] + '/bert_model.ckpt'
     else:
-        tf.logging.debug(f"Finding latest checkpoint (searching {task_metadata['output_dir']})...")
+        tf.logging.info(f"Finding latest checkpoint (searching {task_metadata['output_dir']})...")
         # No idea why this isn't working
         init_checkpoint = tf.train.latest_checkpoint(task_metadata['output_dir'])
         if not init_checkpoint:
