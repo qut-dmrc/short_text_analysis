@@ -118,7 +118,7 @@ def predict_all_in_dir(task_metadata, tpu_addresses=None):
 
     # multiprocess pool
     tf.logging.warn(f"Starting predictions on {len(list_globs)} files with {num_processes} processors / TPUs")
-    parmap.starmap(predict_files, zip(tpu_addresses, list_globs), task_metadata, pm_processes=num_processes)
+    parmap.starmap(predict_files, zip(tpu_addresses, chunks_globs), task_metadata, pm_processes=num_processes)
 
     tz = datetime.datetime.now()
     tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
@@ -132,7 +132,11 @@ def predict_files(tpu_address, list_of_files, task_metadata):
 
     predict_dir = task_metadata['predict_dir']
 
-    tf.logging.warn(f"Loading estimator. Using TPU: {tpu_address}.")
+    tf.logging.warn(f"Loading estimator. Using TPU: {tpu_address}. List of files to work on: {list_of_files}")
+    tf.logging.warn("dry run. exiting.")
+    return
+
+
     estimator = bert_train.define_model(task_metadata, tpu_address, use_tpu)
 
     for file in list_of_files:
