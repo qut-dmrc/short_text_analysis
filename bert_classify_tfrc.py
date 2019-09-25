@@ -93,15 +93,14 @@ def main():
 
 def predict_all_in_dir(task_metadata, tpu_addresses=None):
     """# Run predictions on all files"""
-    import os
     tf.logging.info('***** Records to predict: {} *****'.format(task_metadata['predict_tfrecords']))
     tf.logging.info('***** Predictions save directory: {} *****'.format(task_metadata['predict_dir']))
     t0 = datetime.datetime.now()
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
 
     # quieten tensorflow for the prediction run
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
-    tf.logging.set_verbosity(tf.logging.WARN)
+    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
+    # tf.logging.set_verbosity(tf.logging.WARN)
 
     tfrecords_path = task_metadata['predict_tfrecords']
     if tfrecords_path[:-9] != 'tf_record' or tfrecords_path[:-3] != 'tfr' or tfrecords_path[:-1] == '/':
@@ -159,6 +158,7 @@ def predict_files(tpu_address, list_of_files, task_metadata):
 def predict_single_file(task_metadata, estimator, predict_file):
     t1 = datetime.datetime.now()
     tf.logging.warn("Predicting from {}.".format(predict_file))
+    tf.logging.warn("Task metadata: {}".format(task_metadata))
     # Warning: According to tpu_estimator.py Prediction on TPU is an
     # experimental feature and hence not supported here
     #  raise ValueError("Prediction in TPU not supported")
