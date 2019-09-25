@@ -706,8 +706,8 @@ def define_model(task_metadata, tpu_address, use_tpu, num_train_steps=-1, num_wa
         init_checkpoint = tf.train.latest_checkpoint(task_metadata['output_dir'])
         if not init_checkpoint:
             tf.logging.warn(
-                f"No checkpoint found in directory. Trying to use checkpoint from config file: {task_metadata[
-                    'init_checkpoint']}")
+                f"No checkpoint found in directory. Trying to use checkpoint from config file: "
+                f"{task_metadata['init_checkpoint']}")
             init_checkpoint = task_metadata['init_checkpoint']
 
     run_config = tf.contrib.tpu.RunConfig(
