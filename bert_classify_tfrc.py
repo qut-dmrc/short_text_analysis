@@ -136,21 +136,21 @@ def predict_files(tpu_address, list_of_files, task_metadata):
 
     estimator = bert_train.define_model(task_metadata, tpu_address, use_tpu)
 
-    for file in list_of_files:
-        tf.logging.warn(f"Starting to predict {file}. Using TPU: {tpu_address}.")
-        stem = Path(file).stem
+    for file_path in list_of_files:
+        tf.logging.warn(f"Starting to predict {file_path}. Using TPU: {tpu_address}.")
+        stem = Path(file_path).stem
         predict_output_file_merged = os.path.join(predict_dir, stem + '.merged.csv')
         predict_output_file_lock = os.path.join(predict_dir, stem + '.LOCK')
 
         if tf.gfile.Exists(predict_output_file_merged) or tf.gfile.Exists(predict_output_file_lock):
             tf.logging.warn(
                 "Output file {} already exists. Skipping input from {}.".format(predict_output_file_merged,
-                                                                                file))
+                                                                                file_path))
             return
         with tf.gfile.Open(predict_output_file_lock, mode="w") as f:
             f.write('Locked at {}'.format(datetime.datetime.utcnow()))
 
-        df_merged = predict_single_file(task_metadata, estimator, file)
+        df_merged = predict_single_file(task_metadata, estimator, file_path)
         save_df_gcs(predict_output_file_merged, df_merged)
         tf.gfile.Remove(predict_output_file_lock)
 
