@@ -152,7 +152,7 @@ def load_metadata_from_config(cfg):
         'bert_pretrained_dir': cfg.BERT_PRETRAINED_DIR,
         'output_dir': cfg.OUTPUT_DIR,
         'init_checkpoint': cfg.INIT_CHECKPOINT,
-        'save_checkpoint_steps': cfg.SAVE_CHECKPOINT_STEPS,
+        'save_checkpoints_steps': cfg.SAVE_CHECKPOINTS_STEPS,
         'iterations_per_loop': cfg.ITERATIONS_PER_LOOP,
         'num_tpu_cores': cfg.NUM_TPU_CORES,
         'config_file': cfg.CONFIG_FILE,
@@ -713,7 +713,7 @@ def define_model(task_metadata, tpu_address, use_tpu, num_train_steps=-1, num_wa
     run_config = tf.contrib.tpu.RunConfig(
         cluster=tpu_cluster_resolver,
         model_dir=task_metadata['output_dir'],
-        save_checkpoints_steps=task_metadata['save_checkpoint_steps'],
+        save_checkpoints_steps=task_metadata['save_checkpoints_steps'],
         tpu_config=tf.contrib.tpu.TPUConfig(
             iterations_per_loop=task_metadata['iterations_per_loop'],
             num_shards=task_metadata['num_tpu_cores'],
