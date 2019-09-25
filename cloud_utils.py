@@ -37,7 +37,7 @@ def read_df_gcs(gcs_path, list_of_all_fields=None, header_rows=0):
             file_stream = file_io.FileIO(gcs_path, mode='rb')
             data = pd.read_csv(BytesIO(file_stream.read()), encoding='utf-8',
                                usecols=list_of_all_fields,
-                               compression='gzip', header=header_rows)
+                               compression='gzip', header=header_rows, low_memory=False)
     else:
 
         if json:
@@ -48,7 +48,7 @@ def read_df_gcs(gcs_path, list_of_all_fields=None, header_rows=0):
         else:
             file_stream = file_io.FileIO(gcs_path, mode='r')
             data = pd.read_csv(StringIO(file_stream.read()), encoding='utf-8',
-                               usecols=list_of_all_fields, compression=None, header=header_rows)
+                               usecols=list_of_all_fields, compression=None, header=header_rows, low_memory=False)
 
     return data
 

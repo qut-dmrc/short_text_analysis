@@ -154,6 +154,7 @@ def test_classifier(cfg, estimator, label_list, processor):
     tf.logging.info("  Batch size = %d", cfg.PREDICT_BATCH_SIZE)
 
     tf.logging.warn("Prediction on TPU is not supported. Some records will be dropped.")
+
     test_drop_remainder = True
     test_input_fn = run_classifier.input_fn_builder(
         features=test_examples,
@@ -161,6 +162,7 @@ def test_classifier(cfg, estimator, label_list, processor):
         is_training=False,
         drop_remainder=test_drop_remainder)
     result = estimator.predict(input_fn=test_input_fn)
+
     t1 = datetime.datetime.now()
     output_test_file = os.path.join(cfg.OUTPUT_DIR, "test_results.tsv")
     results = []
@@ -173,7 +175,8 @@ def test_classifier(cfg, estimator, label_list, processor):
             output_line = "\t".join(
                 str(class_probability) for class_probability in prediction) + "\n"
             writer.write(output_line)
-    print('***** Finished test predictions at {}; {} total time *****'.format(t1, t1 - t0))
+
+    tf.logging.info('***** Finished test predictions at {}; {} total time *****'.format(t1, t1 - t0))
     predictions = np.array([p['predicted_class'] for p in results])
     label_ids = np.array([x.label_id for x in test_examples])
     if len(predictions) < len(label_ids):
