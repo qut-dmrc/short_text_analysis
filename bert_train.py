@@ -275,8 +275,8 @@ def generate_random_validation(task_metadata, estimator):
     sample_file = random.choice(glob_list)
     stem = Path(sample_file).stem
     sample_file_tfrecords = os.path.join(task_metadata['predict_tfrecords'],
-                                         stem + f'_{task_metadata["bert_model"]}_{task_metadata[
-                                             "max_sequence_length"]}.tf_record')
+                                         stem + f'_{task_metadata["bert_model"]}_'
+                                         f'{task_metadata["max_sequence_length"]}.tf_record')
 
     tf.logging.info(f"Generating a validation dataset from a randomly chosen input file: {sample_file}")
     tf.logging.info(f"(Using TFRecords from : {sample_file_tfrecords})")
