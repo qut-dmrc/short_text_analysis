@@ -122,14 +122,14 @@ def predict_all_in_dir(task_metadata, tpu_addresses=None, multiple_tpus=False):
 
     if multiple_tpus:
         # This doesn't at all work. We just have to run multiple versions of the script.
-        raise NotImplementedError("Multiple TPU use is not yet working.")
+        # raise NotImplementedError("Multiple TPU use is not yet working.")
         chunks_globs = np.array_split(list_globs, num_processes)
 
         # multiprocess pool
         tf.logging.warn(f"Starting predictions on {len(list_globs)} files with {num_processes} processors / TPUs")
         parmap.starmap(predict_files, zip(tpu_addresses, chunks_globs), task_metadata, pm_processes=num_processes)
     else:
-        predict_files(task_metadata['tpu_names'][0], list_globs, task_metadata)
+        predict_files(tpu_addresses[0], list_globs, task_metadata)
 
     tz = datetime.datetime.now()
     tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
