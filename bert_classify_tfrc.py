@@ -94,7 +94,7 @@ def main():
 def predict_all_in_dir(cfg, tpu_queue=None):
     """# Run predictions on all files"""
     import os
-    tf.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_SOURCE_RECORDS))
+    tf.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_SOURCE_TFRECORDS))
     tf.logging.info('***** Predictions save directory: {} *****'.format(cfg.PREDICT_OUTPUT_DIR))
     t0 = datetime.datetime.now()
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
