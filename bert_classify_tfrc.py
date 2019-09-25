@@ -26,11 +26,12 @@ def main():
     """ Run predictions for an entire directory of tfrecords with a stored BERT model
 
     Usage:
-      bert_classify_tfrc.py [-v] --config=config_file
+      bert_classify_tfrc.py [-vm] --config=config_file
 
     Options:
       -h --help                 Show this screen.
       --config=config_file.py   The configuration file with model parameters, data path, etc
+      -m --multitpu             Run on multiple TPUs
       -v --verbose              Enable debug logging
       --version  Show version.
 
@@ -88,10 +89,10 @@ def main():
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
     task_metadata = bert_train.load_metadata_from_config(cfg)
-    predict_all_in_dir(task_metadata, tpu_addresses)
+    predict_all_in_dir(task_metadata, tpu_addresses, multiple_tpus=args['--multitpu'])
 
 
-def predict_all_in_dir(task_metadata, tpu_addresses=None):
+def predict_all_in_dir(task_metadata, tpu_addresses=None, multiple_tpus=False):
     """# Run predictions on all files"""
     tf.logging.info('***** Records to predict: {} *****'.format(task_metadata['predict_tfrecords']))
     tf.logging.info('***** Predictions save directory: {} *****'.format(task_metadata['predict_dir']))
@@ -113,11 +114,14 @@ def predict_all_in_dir(task_metadata, tpu_addresses=None):
     else:
         num_processes = task_metadata['concurrency']
 
-    chunks_globs = np.array_split(list_globs, num_processes)
+    if multiple_tpus:
+        chunks_globs = np.array_split(list_globs, num_processes)
 
-    # multiprocess pool
-    tf.logging.warn(f"Starting predictions on {len(list_globs)} files with {num_processes} processors / TPUs")
-    parmap.starmap(predict_files, zip(tpu_addresses, chunks_globs), task_metadata, pm_processes=num_processes)
+        # multiprocess pool
+        tf.logging.warn(f"Starting predictions on {len(list_globs)} files with {num_processes} processors / TPUs")
+        parmap.starmap(predict_files, zip(tpu_addresses, chunks_globs), task_metadata, pm_processes=num_processes)
+    else:
+        predict_files(task_metadata['tpu_names'][0], list_globs, task_metadata)
 
     tz = datetime.datetime.now()
     tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
