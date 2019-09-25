@@ -27,7 +27,7 @@ def main():
     """ Run predictions for an entire directory of tfrecords with a stored BERT model
 
     Usage:
-      bert_classify_tfrc.py --config=config_file [--tpu_name=name] [-v]
+      bert_classify_tfrc.py [-v] --config=config_file
 
     Options:
       -h --help                 Show this screen.
@@ -38,7 +38,6 @@ def main():
     """
 
     args = docopt(main.__doc__, version='DMRC BERT Classifier 0.1')
-    assert args['--train'] or args['--validate'], "No action provided. Must select train, validate, or both."
 
     import importlib.util
     spec = importlib.util.spec_from_file_location("classifier.config", args['--config'])
