@@ -106,8 +106,8 @@ def predict_all_in_dir(task_metadata, tpu_addresses=None, multiple_tpus=False):
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
 
     # quieten tensorflow for the prediction run
-    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
-    # tf.logging.set_verbosity(tf.logging.WARN)
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
+    tf.logging.set_verbosity(tf.logging.WARN)
 
     tfrecords_path = task_metadata['predict_tfrecords']
     if tfrecords_path[:-9] != 'tf_record' or tfrecords_path[:-3] != 'tfr' or tfrecords_path[:-1] == '/':
