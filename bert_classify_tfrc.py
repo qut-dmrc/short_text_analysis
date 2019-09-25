@@ -5,7 +5,6 @@
 import datetime
 import json
 import os
-from multiprocessing import Queue
 from pathlib import Path
 
 import numpy as np
@@ -56,7 +55,7 @@ def main():
     tf.logging.info('***** Vocabulary file: {} *****'.format(cfg.VOCAB_FILE))
     tf.logging.info('***** Predictions directory: {} *****'.format(cfg.PREDICT_DIR))
 
-    tpu_queue = Queue()
+    tpu_addresses = []
 
     if cfg.TPU_NAMES:
         use_tpu = True
@@ -75,7 +74,7 @@ def main():
                         auth_info = json.load(f)
                     tf.contrib.cloud.configure_gcs(session, credentials=auth_info)
 
-            tpu_queue.put(tpu_address)
+            tpu_addresses.append(tpu_address)
     else:
         use_tpu = False
         tpu_queue = None
@@ -89,10 +88,10 @@ def main():
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
     task_metadata = bert_train.load_metadata_from_config(cfg)
-    predict_all_in_dir(task_metadata, tpu_queue)
+    predict_all_in_dir(task_metadata, tpu_addresses)
 
 
-def predict_all_in_dir(task_metadata, tpu_queue=None):
+def predict_all_in_dir(task_metadata, tpu_addresses=None):
     """# Run predictions on all files"""
     import os
     tf.logging.info('***** Records to predict: {} *****'.format(task_metadata['predict_tfrecords']))
@@ -110,52 +109,47 @@ def predict_all_in_dir(task_metadata, tpu_queue=None):
 
     list_globs = tf.gfile.Glob(tfrecords_path)
 
-    if tpu_queue:
+    if tpu_addresses:
         num_processes = len(task_metadata['tpu_names'])
     else:
         num_processes = task_metadata['concurrency']
 
+    chunks_globs = np.array_split(list_globs, num_processes)
+
     # multiprocess pool
     tf.logging.warn(f"Starting predictions on {len(list_globs)} files with {num_processes} processors / TPUs")
-    parmap.starmap(predict_single_file_wrapper, list_globs, task_metadata, tpu_queue, pm_processes=num_processes)
+    parmap.starmap(predict_files, zip(tpu_addresses, list_globs), task_metadata, pm_processes=num_processes)
 
     tz = datetime.datetime.now()
     tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
     tf.logging.set_verbosity(tf.logging.INFO)
 
 
-def predict_single_file_wrapper(task_metadata, predict_file, predict_dir, tpu_queue=None):
-    tpu_address = None
+def predict_files(tpu_address, list_of_files, task_metadata, predict_dir):
     use_tpu = False
+    if tpu_address:
+        use_tpu = True
 
-    try:
-        stem = Path(predict_file).stem
+    tf.logging.warn(f"Loading estimator. Using TPU: {tpu_address}.")
+    estimator = bert_train.define_model(task_metadata, tpu_address, use_tpu)
+
+    for file in list_of_files:
+        tf.logging.warn(f"Starting to predict {file}. Using TPU: {tpu_address}.")
+        stem = Path(file).stem
         predict_output_file_merged = os.path.join(predict_dir, stem + '.merged.csv')
         predict_output_file_lock = os.path.join(predict_dir, stem + '.LOCK')
 
         if tf.gfile.Exists(predict_output_file_merged) or tf.gfile.Exists(predict_output_file_lock):
             tf.logging.warn(
                 "Output file {} already exists. Skipping input from {}.".format(predict_output_file_merged,
-                                                                                predict_file))
+                                                                                file))
             return
         with tf.gfile.Open(predict_output_file_lock, mode="w") as f:
             f.write('Locked at {}'.format(datetime.datetime.utcnow()))
 
-        if tpu_queue:
-            tf.logging.warn("Trying to obtain TPU address")
-            tpu_address = tpu_queue.get(block=True)
-            tf.logging.warn("Got TPU address: {}".format(tpu_address))
-            use_tpu = True
-
-        estimator = bert_train.define_model(task_metadata, tpu_address, use_tpu)
-        df_merged = predict_single_file(task_metadata, estimator, predict_file)
+        df_merged = predict_single_file(task_metadata, estimator, file)
         save_df_gcs(predict_output_file_merged, df_merged)
         tf.gfile.Remove(predict_output_file_lock)
-
-    finally:
-        if tpu_address and tpu_queue:
-            # Make the TPU available again for other processes
-            tpu_queue.put(tpu_address)
 
 
 def predict_single_file(task_metadata, estimator, predict_file):
