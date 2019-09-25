@@ -26,7 +26,7 @@ def main():
     """ Run predictions for an entire directory of tfrecords with a stored BERT model
 
     Usage:
-      bert_classify_tfrc.py [-vm] --config=config_file --tpu=<tpu_name>
+      bert_classify_tfrc.py [-vm] --config=config_file [--tpu=<tpu_name>]
 
     Options:
       -h --help                 Show this screen.
