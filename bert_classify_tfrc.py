@@ -26,13 +26,14 @@ def main():
     """ Run predictions for an entire directory of tfrecords with a stored BERT model
 
     Usage:
-      bert_classify_tfrc.py [-vm] --config=config_file
+      bert_classify_tfrc.py [-vm] --config=config_file --tpu=<tpu_name>
 
     Options:
       -h --help                 Show this screen.
       --config=config_file.py   The configuration file with model parameters, data path, etc
       -m --multitpu             Run on multiple TPUs
       -v --verbose              Enable debug logging
+      --tpu=<tpu_name>          Force running on a particular TPU
       --version  Show version.
 
     """
@@ -58,9 +59,14 @@ def main():
 
     tpu_addresses = []
 
-    if cfg.TPU_NAMES:
+    if cfg.TPU_NAMES or args['--tpu']:
+        if args['--tpu']:
+            list_tpus = [args['--tpu']]
+            tf.logging.info(f"Running on TPU: {args['--tpu']}.")
+        else:
+            list_tpus = cfg.TPU_NAMES
         use_tpu = True
-        for tpu_name in cfg.TPU_NAMES:
+        for tpu_name in list_tpus:
             tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_name)
             tpu_address = tpu_cluster_resolver.get_master()
 
@@ -115,6 +121,8 @@ def predict_all_in_dir(task_metadata, tpu_addresses=None, multiple_tpus=False):
         num_processes = task_metadata['concurrency']
 
     if multiple_tpus:
+        # This doesn't at all work. We just have to run multiple versions of the script.
+        raise NotImplementedError("Multiple TPU use is not yet working.")
         chunks_globs = np.array_split(list_globs, num_processes)
 
         # multiprocess pool
