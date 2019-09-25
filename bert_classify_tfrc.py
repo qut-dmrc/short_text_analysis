@@ -132,10 +132,7 @@ def predict_files(tpu_address, list_of_files, task_metadata):
 
     predict_dir = task_metadata['predict_dir']
 
-    tf.logging.warn(f"Loading estimator. Using TPU: {tpu_address}. List of files to work on: {list_of_files}")
-    tf.logging.warn("dry run. exiting.")
-    return
-
+    tf.logging.warn(f"Loading estimator. Using TPU: {tpu_address}. Working on {len(list_of_files)} files.")
 
     estimator = bert_train.define_model(task_metadata, tpu_address, use_tpu)
 
