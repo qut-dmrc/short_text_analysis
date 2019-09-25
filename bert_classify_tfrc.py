@@ -125,10 +125,12 @@ def predict_all_in_dir(task_metadata, tpu_addresses=None):
     tf.logging.set_verbosity(tf.logging.INFO)
 
 
-def predict_files(tpu_address, list_of_files, task_metadata, predict_dir):
+def predict_files(tpu_address, list_of_files, task_metadata):
     use_tpu = False
     if tpu_address:
         use_tpu = True
+
+    predict_dir = task_metadata['predict_dir']
 
     tf.logging.warn(f"Loading estimator. Using TPU: {tpu_address}.")
     estimator = bert_train.define_model(task_metadata, tpu_address, use_tpu)
