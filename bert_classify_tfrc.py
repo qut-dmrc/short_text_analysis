@@ -88,7 +88,7 @@ def main():
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
-    predict_all_in_dir(cfg, use_tpu, tpu_queue)
+    predict_all_in_dir(cfg, tpu_queue)
 
 
 def predict_all_in_dir(cfg, tpu_queue=None):
