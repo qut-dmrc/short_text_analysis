@@ -99,6 +99,8 @@ def main():
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
+    task_metadata = load_metadata_from_config(cfg)
+
     estimator = None
 
     if args['--train']:
@@ -126,45 +128,74 @@ def main():
             len(train_examples) / cfg.TRAIN_BATCH_SIZE * cfg.NUM_TRAIN_EPOCHS)
         num_warmup_steps = int(num_train_steps * cfg.WARMUP_PROPORTION)
 
-        estimator = define_model(cfg, tpu_address, use_tpu, num_train_steps, num_warmup_steps, new_model=True)
+        estimator = define_model(task_metadata, tpu_address, use_tpu, num_train_steps, num_warmup_steps, new_model=True)
 
-        train_classifier(cfg, estimator, num_train_steps, train_examples)
+        train_classifier(task_metadata, estimator, num_train_steps, train_examples)
 
-        eval_classifier(cfg, estimator, processor, use_tpu)
+        eval_classifier(task_metadata, estimator, processor, use_tpu)
 
-        test_classifier(cfg, estimator, label_list, processor)
+        test_classifier(task_metadata, estimator, label_list, processor)
 
     if args['--validate']:
         # Load the stored model if we have one and didn't just train it.
         if not args['--train']:
-            estimator = define_model(cfg, tpu_address, use_tpu)
+            estimator = define_model(task_metadata, tpu_address, use_tpu)
 
         assert estimator is not None
 
         ## Predict on live data and output a sample for validation or training
-        generate_random_validation(cfg, estimator)
+        generate_random_validation(task_metadata, estimator)
 
 
-def test_classifier(cfg, estimator, label_list, processor):
+def load_metadata_from_config(cfg):
+    task_metadata = {
+        'bert_pretrained_dir': cfg.BERT_PRETRAINED_DIR,
+        'output_dir': cfg.OUTPUT_DIR,
+        'init_checkpoint': cfg.INIT_CHECKPOINT,
+        'save_checkpoint_steps': cfg.SAVE_CHECKPOINT_STEPS,
+        'iterations_per_loop': cfg.ITERATIONS_PER_LOOP,
+        'num_tpu_cores': cfg.NUM_TPU_CORES,
+        'config_file': cfg.CONFIG_FILE,
+        'classification_categories': cfg.CLASSIFICATION_CATEGORIES,
+        'learning_rate': cfg.LEARNING_RATE,
+        'train_batch_size': cfg.TRAIN_BATCH_SIZE,
+        'eval_batch_size': cfg.EVAL_BATCH_SIZE,
+        'predict_batch_size': cfg.PREDICT_BATCH_SIZE,
+        'max_sequence_length': cfg.MAX_SEQUENCE_LENGTH,
+        'predict_tfrecords': cfg.PREDICT_TFRECORDS,
+        'tpu_names': cfg.TPU_NAMES,
+        'concurrency': cfg.CONCURRENCY,
+        'id_field': cfg.ID_FIELD,
+        'label_field': cfg.LABEL_FIELD,
+        'predict_input_path': cfg.PREDICT_INPUT_PATH,
+        'bert_model': cfg.BERT_MODEL,
+        'predict_dir': cfg.PREDICT_DIR,
+
+    }
+
+    return task_metadata
+
+
+def test_classifier(task_metadata, estimator, label_list, processor):
     # Run predictions on test data
     test_examples = processor.get_test_examples()
     t0 = datetime.datetime.now()
     print('***** Started test predictions at {} *****'.format(t0))
     tf.logging.info("  Num examples = %d", len(test_examples))
-    tf.logging.info("  Batch size = %d", cfg.PREDICT_BATCH_SIZE)
+    tf.logging.info("  Batch size = %d", task_metadata['predict_batch_size'])
 
     tf.logging.warn("Prediction on TPU is not supported. Some records will be dropped.")
 
     test_drop_remainder = True
     test_input_fn = run_classifier.input_fn_builder(
         features=test_examples,
-        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+        seq_length=task_metadata['max_sequence_length'],
         is_training=False,
         drop_remainder=test_drop_remainder)
     result = estimator.predict(input_fn=test_input_fn)
 
     t1 = datetime.datetime.now()
-    output_test_file = os.path.join(cfg.OUTPUT_DIR, "test_results.tsv")
+    output_test_file = os.path.join(task_metadata['output_dir'], "test_results.tsv")
     results = []
     with tf.gfile.GFile(output_test_file, "w") as writer:
         tf.logging.info("***** Test results *****")
@@ -195,25 +226,25 @@ def test_classifier(cfg, estimator, label_list, processor):
         tf.logging.info("precision ({}): {}".format(av, precision_score(y_true, y_pred, average=av)))
 
 
-def eval_classifier(cfg, estimator, processor, use_tpu):
+def eval_classifier(task_metadata, estimator, processor, use_tpu):
     # Eval the model.
     eval_examples = processor.get_dev_examples()
     t0 = datetime.datetime.now()
     tf.logging.info('***** Started evaluation at {} *****'.format(t0))
     tf.logging.info('  Num examples = {}'.format(len(eval_examples)))
-    tf.logging.info('  Batch size = {}'.format(cfg.EVAL_BATCH_SIZE))
+    tf.logging.info('  Batch size = {}'.format(task_metadata['eval_batch_size']))
     if use_tpu:
         tf.logging.warn("Eval will be slightly WRONG on the TPU because it will truncate the last batch.")
-    eval_steps = int(len(eval_examples) / cfg.EVAL_BATCH_SIZE)
+    eval_steps = int(len(eval_examples) / task_metadata['eval_batch_size'])
     eval_input_fn = run_classifier.input_fn_builder(
         features=eval_examples,
-        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+        seq_length=task_metadata['max_sequence_length'],
         is_training=False,
         drop_remainder=True)
     result = estimator.evaluate(input_fn=eval_input_fn, steps=eval_steps)
     t1 = datetime.datetime.now()
     tf.logging.info('***** Finished evaluation at {}; {} total time *****'.format(t1, t1 - t0))
-    output_eval_file = os.path.join(cfg.OUTPUT_DIR, "eval_results.txt")
+    output_eval_file = os.path.join(task_metadata['output_dir'], "eval_results.txt")
     with tf.gfile.GFile(output_eval_file, "w") as writer:
         tf.logging.info("***** Eval results *****")
         for key in sorted(result.keys()):
@@ -221,16 +252,16 @@ def eval_classifier(cfg, estimator, processor, use_tpu):
             writer.write("%s = %s\n" % (key, str(result[key])))
 
 
-def train_classifier(cfg, estimator, num_train_steps, train_examples):
+def train_classifier(task_metadata, estimator, num_train_steps, train_examples):
     t0 = datetime.datetime.now()
     tf.logging.info('Training on BERT base model. This usually takes < 5 minutes. Please wait...')
     tf.logging.info('***** Started training at {} *****'.format(t0))
     tf.logging.info('  Num examples = {}'.format(len(train_examples)))
-    tf.logging.info('  Batch size = {}'.format(cfg.TRAIN_BATCH_SIZE))
+    tf.logging.info('  Batch size = {}'.format(task_metadata['train_batch_size']))
     tf.logging.info("  Num steps = %d", num_train_steps)
     train_input_fn = run_classifier.input_fn_builder(
         features=train_examples,
-        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+        seq_length=task_metadata['max_sequence_length'],
         is_training=True,
         drop_remainder=True)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
@@ -238,21 +269,22 @@ def train_classifier(cfg, estimator, num_train_steps, train_examples):
     tf.logging.info('***** Finished training at {}; {} total time *****'.format(t1, t1 - t0))
 
 
-def generate_random_validation(cfg, estimator):
-    glob_list = tf.gfile.Glob(cfg.PREDICT_INPUT_PATH)
+def generate_random_validation(task_metadata, estimator):
+    glob_list = tf.gfile.Glob(task_metadata['predict_input_path'])
 
     sample_file = random.choice(glob_list)
     stem = Path(sample_file).stem
-    sample_file_tfrecords = os.path.join(cfg.PREDICT_TFRECORDS,
-                                         stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
+    sample_file_tfrecords = os.path.join(task_metadata['predict_tfrecords'],
+                                         stem + f'_{task_metadata["bert_model"]}_{task_metadata[
+                                             "max_sequence_length"]}.tf_record')
 
     tf.logging.info(f"Generating a validation dataset from a randomly chosen input file: {sample_file}")
     tf.logging.info(f"(Using TFRecords from : {sample_file_tfrecords})")
 
-    df = bert_classify_tfrc.predict_single_file(cfg, estimator, sample_file_tfrecords)
+    df = bert_classify_tfrc.predict_single_file(task_metadata, estimator, sample_file_tfrecords)
 
     df_sample = read_df_gcs(sample_file)
-    df = pd.merge(df_sample, df, left_on=cfg.ID_FIELD, right_on=cfg.ID_FIELD)
+    df = pd.merge(df_sample, df, left_on=task_metadata['id_field'], right_on=task_metadata['id_field'])
 
     # Get 1000 rows from each class
     df_predictions = df.groupby('predicted_class').apply(lambda s: s.sample(min(len(s), 1000)))
@@ -264,13 +296,14 @@ def generate_random_validation(cfg, estimator):
     df_least_confident["DATA_SOURCE"] = "{} least confident".format(stem)
 
     df_validate = pd.concat([df_predictions, df_least_confident])
-    df_validate = df_validate.drop_duplicates(subset=cfg.ID_FIELD)
+    df_validate = df_validate.drop_duplicates(subset=task_metadata['id_field'])
 
-    df_validate[cfg.LABEL_FIELD] = None
+    df_validate[task_metadata['label_field']] = None
 
     run_date = datetime.datetime.strftime(datetime.datetime.utcnow(), '%Y%m%d%H%M')
 
-    gcs_output_path = cfg.PREDICT_DIR + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
+    gcs_output_path = task_metadata[
+                          'predict_dir'] + '/' + run_date + '-randomsample-predicted-semisupervised-1k-each.csv'
     save_df_gcs(gcs_output_path, df_validate)
     tf.logging.info('Saved semi-supervised training set to: {}'.format(gcs_output_path))
 
@@ -659,36 +692,37 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
     return model_fn
 
 
-def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1, new_model=False):
+def define_model(task_metadata, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps=-1, new_model=False):
     tpu_cluster_resolver = None
     if use_tpu:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu_address)
 
     if new_model:
         tf.logging.warning("Running only from BERT pre-trained model (not finetuned).")
-        init_checkpoint = cfg.BERT_PRETRAINED_DIR + '/bert_model.ckpt'
+        init_checkpoint = task_metadata['bert_pretrained_dir'] + '/bert_model.ckpt'
     else:
-        tf.logging.debug(f"Finding latest checkpoint (searching {cfg.OUTPUT_DIR})...")
+        tf.logging.debug(f"Finding latest checkpoint (searching {task_metadata['output_dir']})...")
         # No idea why this isn't working
-        init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+        init_checkpoint = tf.train.latest_checkpoint(task_metadata['output_dir'])
         if not init_checkpoint:
             tf.logging.warn(
-                f"No checkpoint found in directory. Trying to use checkpoint from config file: {cfg.INIT_CHECKPOINT}")
-            init_checkpoint = cfg.INIT_CHECKPOINT
+                f"No checkpoint found in directory. Trying to use checkpoint from config file: {task_metadata[
+                    'init_checkpoint']}")
+            init_checkpoint = task_metadata['init_checkpoint']
 
     run_config = tf.contrib.tpu.RunConfig(
         cluster=tpu_cluster_resolver,
-        model_dir=cfg.OUTPUT_DIR,
-        save_checkpoints_steps=cfg.SAVE_CHECKPOINTS_STEPS,
+        model_dir=task_metadata['output_dir'],
+        save_checkpoints_steps=task_metadata['save_checkpoint_steps'],
         tpu_config=tf.contrib.tpu.TPUConfig(
-            iterations_per_loop=cfg.ITERATIONS_PER_LOOP,
-            num_shards=cfg.NUM_TPU_CORES,
+            iterations_per_loop=task_metadata['iterations_per_loop'],
+            num_shards=task_metadata['num_tpu_cores'],
             per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2))
     model_fn = model_fn_builder(
-        bert_config=modeling.BertConfig.from_json_file(cfg.CONFIG_FILE),
-        num_labels=len(cfg.CLASSIFICATION_CATEGORIES),
+        bert_config=modeling.BertConfig.from_json_file(task_metadata['config_file']),
+        num_labels=len(task_metadata['classification_categories']),
         init_checkpoint=init_checkpoint,
-        learning_rate=cfg.LEARNING_RATE,
+        learning_rate=task_metadata['learning_rate'],
         num_train_steps=num_train_steps,
         num_warmup_steps=num_warmup_steps,
         use_tpu=use_tpu,
@@ -698,9 +732,9 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
         use_tpu=use_tpu,
         model_fn=model_fn,
         config=run_config,
-        train_batch_size=cfg.TRAIN_BATCH_SIZE,
-        eval_batch_size=cfg.EVAL_BATCH_SIZE,
-        predict_batch_size=cfg.PREDICT_BATCH_SIZE)
+        train_batch_size=task_metadata['train_batch_size'],
+        eval_batch_size=task_metadata['eval_batch_size'],
+        predict_batch_size=task_metadata['predict_batch_size'])
     return estimator
 
 

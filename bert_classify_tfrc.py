@@ -91,11 +91,11 @@ def main():
     predict_all_in_dir(cfg, tpu_queue)
 
 
-def predict_all_in_dir(cfg, tpu_queue=None):
+def predict_all_in_dir(task_metadata, tpu_queue=None):
     """# Run predictions on all files"""
     import os
-    tf.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_TFRECORDS))
-    tf.logging.info('***** Predictions save directory: {} *****'.format(cfg.PREDICT_DIR))
+    tf.logging.info('***** Records to predict: {} *****'.format(task_metadata['predict_tfrecords']))
+    tf.logging.info('***** Predictions save directory: {} *****'.format(task_metadata['predict_dir']))
     t0 = datetime.datetime.now()
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
 
@@ -103,31 +103,34 @@ def predict_all_in_dir(cfg, tpu_queue=None):
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
     tf.logging.set_verbosity(tf.logging.WARN)
 
-    tfrecords_path = cfg.PREDICT_TFRECORDS
+    tfrecords_path = task_metadata['predict_tfrecords']
     if tfrecords_path[:-9] != 'tf_record' or tfrecords_path[:-3] != 'tfr' or tfrecords_path[:-1] == '/':
         tfrecords_path = tfrecords_path + "*.tf_record"
 
     list_globs = tf.gfile.Glob(tfrecords_path)
 
     if tpu_queue:
-        num_processes = len(cfg.TPU_NAMES)
+        num_processes = len(task_metadata['tpu_names'])
     else:
-        num_processes = cfg.CONCURRENCY
+        num_processes = task_metadata['concurrency']
 
     # multiprocess pool
     tf.logging.warn(f"Starting predictions on {len(list_globs)} files with {num_processes} processors / TPUs")
-    parmap.starmap(predict_single_file_wrapper, list_globs, cfg, tpu_queue, pm_processes=num_processes)
+    parmap.starmap(predict_single_file_wrapper, list_globs, task_metadata, tpu_queue, pm_processes=num_processes)
 
     tz = datetime.datetime.now()
     tf.logging.warn('***** Finished all predictions at {}; {} total time *****'.format(tz, tz - t0))
     tf.logging.set_verbosity(tf.logging.INFO)
 
 
-def predict_single_file_wrapper(predict_file, cfg, tpu_queue=None):
+def predict_single_file_wrapper(task_metadata, predict_file, predict_dir, tpu_queue=None):
+    tpu_address = None
+    use_tpu = False
+
     try:
         stem = Path(predict_file).stem
-        predict_output_file_merged = os.path.join(cfg.PREDICT_DIR, stem + '.merged.csv')
-        predict_output_file_lock = os.path.join(cfg.PREDICT_DIR, stem + '.LOCK')
+        predict_output_file_merged = os.path.join(predict_dir, stem + '.merged.csv')
+        predict_output_file_lock = os.path.join(predict_dir, stem + '.LOCK')
 
         if tf.gfile.Exists(predict_output_file_merged) or tf.gfile.Exists(predict_output_file_lock):
             tf.logging.warn(
@@ -137,16 +140,14 @@ def predict_single_file_wrapper(predict_file, cfg, tpu_queue=None):
         with tf.gfile.Open(predict_output_file_lock, mode="w") as f:
             f.write('Locked at {}'.format(datetime.datetime.utcnow()))
 
-        tpu_address = None
-        use_tpu = False
         if tpu_queue:
             tf.logging.warn("Trying to obtain TPU address")
             tpu_address = tpu_queue.get(block=True)
             tf.logging.warn("Got TPU address: {}".format(tpu_address))
             use_tpu = True
 
-        estimator = bert_train.define_model(cfg, tpu_address, use_tpu)
-        df_merged = predict_single_file(cfg, estimator, predict_file)
+        estimator = bert_train.define_model(task_metadata, tpu_address, use_tpu)
+        df_merged = predict_single_file(task_metadata, estimator, predict_file)
         save_df_gcs(predict_output_file_merged, df_merged)
         tf.gfile.Remove(predict_output_file_lock)
 
@@ -156,7 +157,7 @@ def predict_single_file_wrapper(predict_file, cfg, tpu_queue=None):
             tpu_queue.put(tpu_address)
 
 
-def predict_single_file(cfg, estimator, predict_file):
+def predict_single_file(task_metadata, estimator, predict_file):
     t1 = datetime.datetime.now()
     tf.logging.warn("Predicting from {}.".format(predict_file))
     # Warning: According to tpu_estimator.py Prediction on TPU is an
@@ -165,13 +166,13 @@ def predict_single_file(cfg, estimator, predict_file):
     predict_drop_remainder = True
     predict_input_fn = file_based_input_fn_builder(
         input_file=predict_file,
-        seq_length=cfg.MAX_SEQUENCE_LENGTH,
+        seq_length=task_metadata['max_sequence_length'],
         is_training=False,
         drop_remainder=True)
     results = []
     for prediction in estimator.predict(input_fn=predict_input_fn):
         results.append({'predicted_class': np.argmax(prediction['probabilities']),
-                        'predicted_class_label': cfg.CLASSIFICATION_CATEGORIES[
+                        'predicted_class_label': task_metadata['classification_categories'][
                             np.argmax(prediction['probabilities'])],
                         'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
     # Here results are stored as an ordered list - need to get the ID back from the ids.txt file.
@@ -182,7 +183,7 @@ def predict_single_file(cfg, estimator, predict_file):
     df_ids.columns = ['guid']
     df_results = pd.DataFrame(results)
     df_merged = pd.concat([df_ids, df_results], axis=1)
-    df_merged = df_merged.rename(columns={'guid': cfg.ID_FIELD})
+    df_merged = df_merged.rename(columns={'guid': task_metadata['id_field']})
 
     return df_merged
 
