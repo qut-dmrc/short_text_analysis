@@ -667,9 +667,11 @@ def define_model(cfg, tpu_address, use_tpu, num_train_steps=-1, num_warmup_steps
     else:
         tf.logging.debug(f"Finding latest checkpoint (searching {cfg.OUTPUT_DIR})...")
         # No idea why this isn't working
-        # init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
-        tf.logging.debug(f"Using checkpoint from config file: {cfg.INIT_CHECKPOINT}")
-        init_checkpoint = cfg.INIT_CHECKPOINT
+        init_checkpoint = tf.train.latest_checkpoint(cfg.OUTPUT_DIR)
+        if not init_checkpoint:
+            tf.logging.warn(
+                f"No checkpoint found in directory. Trying to use checkpoint from config file: {cfg.INIT_CHECKPOINT}")
+            init_checkpoint = cfg.INIT_CHECKPOINT
 
     run_config = tf.contrib.tpu.RunConfig(
         cluster=tpu_cluster_resolver,
