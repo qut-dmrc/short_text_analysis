@@ -146,7 +146,8 @@ def predict_files(tpu_address, list_of_files, task_metadata):
             tf.logging.warn(
                 "Output file {} already exists. Skipping input from {}.".format(predict_output_file_merged,
                                                                                 file_path))
-            return
+            continue
+
         with tf.gfile.Open(predict_output_file_lock, mode="w") as f:
             f.write('Locked at {}'.format(datetime.datetime.utcnow()))
 
