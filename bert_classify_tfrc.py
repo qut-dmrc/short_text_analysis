@@ -88,7 +88,8 @@ def main():
 
     tf.gfile.MakeDirs(cfg.OUTPUT_DIR)
 
-    predict_all_in_dir(cfg, tpu_queue)
+    task_metadata = bert_train.load_metadata_from_config(cfg)
+    predict_all_in_dir(task_metadata, tpu_queue)
 
 
 def predict_all_in_dir(task_metadata, tpu_queue=None):
