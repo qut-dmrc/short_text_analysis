@@ -95,7 +95,7 @@ def predict_all_in_dir(cfg, tpu_queue=None):
     """# Run predictions on all files"""
     import os
     tf.logging.info('***** Records to predict: {} *****'.format(cfg.PREDICT_TFRECORDS))
-    tf.logging.info('***** Predictions save directory: {} *****'.format(cfg.PREDICT_OUTPUT_DIR))
+    tf.logging.info('***** Predictions save directory: {} *****'.format(cfg.PREDICT_DIR))
     t0 = datetime.datetime.now()
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
 
@@ -121,8 +121,8 @@ def predict_all_in_dir(cfg, tpu_queue=None):
 def predict_single_file_wrapper(predict_file, cfg, tpu_queue=None):
     try:
         stem = Path(predict_file).stem
-        predict_output_file_merged = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.merged.csv')
-        predict_output_file_lock = os.path.join(cfg.PREDICT_OUTPUT_DIR, stem + '.LOCK')
+        predict_output_file_merged = os.path.join(cfg.PREDICT_DIR, stem + '.merged.csv')
+        predict_output_file_lock = os.path.join(cfg.PREDICT_DIR, stem + '.LOCK')
 
         if tf.gfile.Exists(predict_output_file_merged) or tf.gfile.Exists(predict_output_file_lock):
             tf.logging.warn(
