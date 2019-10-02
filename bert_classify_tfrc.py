@@ -48,7 +48,7 @@ def main():
     date_prefix = format(
         datetime.datetime.utcnow().strftime('%Y%m%d%H%M'))
 
-    setup_logging_local(log_file_name=f'train_{date_prefix}.txt', verbose=args['--verbose'])
+    setup_logging_local(log_file_name=f'classify_{date_prefix}.txt', verbose=args['--verbose'])
 
     tf.logging.info('***** Task data directory: {} *****'.format(cfg.TASK_DATA_DIR))
     tf.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
@@ -168,7 +168,7 @@ def predict_files(tpu_address, list_of_files, task_metadata):
 
 
 def predict_single_file(task_metadata, estimator, predict_file):
-    t1 = datetime.datetime.now()
+    t1 = datetime.datetime.utcnow()
     tf.logging.warn("Predicting from {}.".format(predict_file))
     tf.logging.warn("Task metadata: {}".format(task_metadata))
     # Warning: According to tpu_estimator.py Prediction on TPU is an
@@ -187,7 +187,7 @@ def predict_single_file(task_metadata, estimator, predict_file):
                             np.argmax(prediction['probabilities'])],
                         'confidence': prediction['probabilities'][np.argmax(prediction['probabilities'])]})
     # Here results are stored as an ordered list - need to get the ID back from the ids.txt file.
-    tz = datetime.datetime.now()
+    tz = datetime.datetime.utcnow()
     tf.logging.warn('***** Finished predictions at {}; {} file time *****'.format(tz, tz - t1))
     predict_file_ids = predict_file + '.ids.txt'
     df_ids = read_df_gcs(predict_file_ids, header_rows=None)
