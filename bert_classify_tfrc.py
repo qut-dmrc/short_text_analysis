@@ -100,20 +100,21 @@ def main():
 
 def predict_all_in_dir(task_metadata, tpu_addresses=None, multiple_tpus=False):
     """# Run predictions on all files"""
-    tf.logging.info('***** Records to predict: {} *****'.format(task_metadata['predict_tfrecords']))
+
+    tfrecords_path = task_metadata['predict_tfrecords']
+
+    tf.logging.info('***** Records to predict: {} *****'.format(tfrecords_path))
     tf.logging.info('***** Predictions save directory: {} *****'.format(task_metadata['predict_dir']))
     t0 = datetime.datetime.now()
     tf.logging.info('***** Started predictions at {} *****'.format(t0))
+
+    list_globs = tf.gfile.Glob(tfrecords_path)
+    tf.logging.info(f"Found {len(list_globs)} files to predict.")
 
     # quieten tensorflow for the prediction run
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # or any {'0', '1', '2'}
     tf.logging.set_verbosity(tf.logging.WARN)
 
-    tfrecords_path = task_metadata['predict_tfrecords']
-    if tfrecords_path[:-9] != 'tf_record' or tfrecords_path[:-3] != 'tfr' or tfrecords_path[:-1] == '/':
-        tfrecords_path = tfrecords_path + "*.tf_record"
-
-    list_globs = tf.gfile.Glob(tfrecords_path)
 
     if tpu_addresses:
         num_processes = len(task_metadata['tpu_names'])
