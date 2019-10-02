@@ -40,7 +40,7 @@ def main():
     tf.logging.info('***** BERT pretrained directory: {} *****'.format(cfg.BERT_PRETRAINED_DIR))
     tf.logging.info(tf.gfile.ListDirectory(cfg.BERT_PRETRAINED_DIR))
 
-    output_dir = Path(cfg.PREDICT_TFRECORDS).parent
+    output_dir = str(Path(cfg.PREDICT_TFRECORDS).parent)
     tf.gfile.MakeDirs(output_dir)
 
     tf.logging.info('***** TFRecords output directory: {} *****'.format(output_dir))
