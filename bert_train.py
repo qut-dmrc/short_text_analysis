@@ -380,7 +380,7 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
 
     # drop fields with empty values
     df = df.dropna(axis='index', subset=['guid', 'text_a'])
-    if label_field:  # if we were reading labeled data, only keep labeled records
+    if label_field and not drop_label:  # if we were reading labeled data, only keep labeled records
         df = df.dropna(axis='index', subset=['label'])
 
     for col in df.columns:
