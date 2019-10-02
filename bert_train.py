@@ -346,7 +346,7 @@ def read_training_data_gcs(gcs_path, list_of_all_fields, label_field, list_of_ca
     return df
 
 
-def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_field):
+def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_field, drop_label=False):
     """ Pre-process the dataframe - wrangle the columns into a standard format."""
     tf.logging.info('Starting to preprocess dataframe containing {} rows.'.format(df.shape[0]))
 
@@ -366,7 +366,7 @@ def preprocess_df(df, list_of_all_fields, list_of_text_fields, label_field, id_f
     else:
         df['text_a'] = df[list_of_text_fields[0]]
 
-    if label_field:
+    if label_field and not drop_label:
         df['label'] = df[label_field]
     else:
         df['label'] = ""
