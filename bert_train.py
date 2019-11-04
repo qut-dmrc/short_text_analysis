@@ -455,7 +455,7 @@ def convert_dataframe_to_features(df, vocab_file, do_lower_case, label_list, max
         guid = tokenization.convert_to_unicode(row['guid'])
         text_a = tokenization.convert_to_unicode(row['text_a'])
         if is_predicting:
-            label = '0'
+            label = None
         else:
             label = tokenization.convert_to_unicode(row['label'])
 
