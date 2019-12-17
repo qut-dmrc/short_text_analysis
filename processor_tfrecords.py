@@ -73,12 +73,16 @@ def main():
         if cfg.LABEL_FIELD not in df.columns:
             df[cfg.LABEL_FIELD] = None
 
+        list_categories = cfg.CLASSIFICATION_CATEGORIES
+        if not list_categories:
+            list_categories = ['0']  # BERT's convert_single_example() needs at least one category, apparently.
+
         df = preprocess_df(df, id_field=cfg.ID_FIELD, label_field=None, list_of_all_fields=cfg.ALL_FIELDS,
                            list_of_text_fields=cfg.TEXT_FIELDS, drop_label=True)
 
         tf.logging.info(f"Tokenizing {df.shape[0]} rows from {file} in parallel.")
         tf_examples = convert_df_to_examples_mp(df, concurrency=cfg.CONCURRENCY, vocab_file=cfg.VOCAB_FILE,
-                                                do_lower_case=True, label_list=cfg.CLASSIFICATION_CATEGORIES,
+                                                do_lower_case=True, label_list=list_categories,
                                                 max_seq_length=cfg.MAX_SEQUENCE_LENGTH, is_predicting=True)
 
         # save examples asynchronously
