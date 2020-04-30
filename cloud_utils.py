@@ -53,6 +53,23 @@ def read_df_gcs(gcs_path, list_of_all_fields=None, header_rows=0):
     return data
 
 
+def query_cached(bq_client, sql, save_file=None, overwrite=False):
+    if not save_file:
+        return bq_client.query(sql).to_dataframe()
+
+    if not overwrite:
+        try:
+            df = pd.read_pickle(save_file)
+            return df
+        except Exception as e:
+            print(e)
+
+    df = bq_client.query(sql).to_dataframe()
+    df.to_pickle(save_file)
+
+    return df
+
+
 def setup_logging_local(log_file_name, verbose=False):
     # get TF logger
     log = logging.getLogger('tensorflow')
