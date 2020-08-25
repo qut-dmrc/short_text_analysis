@@ -24,7 +24,7 @@ from pandas.api.types import is_string_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
 from tensorflow.python.lib.io import file_io
 
-import bert_classify_tfrc
+from short_text_analysis import bert_classify_tfrc
 from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
 
 
