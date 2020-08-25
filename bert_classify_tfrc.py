@@ -15,7 +15,7 @@ from docopt import docopt
 from parmap import parmap
 
 from short_text_analysis import bert_train
-from cloud_utils import read_df_gcs, save_df_gcs, setup_logging_local
+from short_text_analysis.cloud_utils import read_df_gcs, save_df_gcs, setup_logging_local
 
 
 # Model Hyper Parameters

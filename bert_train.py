@@ -25,7 +25,7 @@ from sklearn.model_selection import train_test_split
 from tensorflow.python.lib.io import file_io
 
 from short_text_analysis import bert_classify_tfrc
-from cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
+from short_text_analysis.cloud_utils import read_df_gcs, setup_logging_local, save_df_gcs
 
 
 def main():
