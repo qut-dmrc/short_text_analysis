@@ -7,7 +7,7 @@ import tensorflow as tf
 from docopt import docopt
 
 from bert_train import preprocess_df, convert_df_to_examples_mp, save_examples
-from cloud_utils import read_df_gcs, setup_logging_local
+from short_text_analysis.cloud_utils import read_df_gcs, setup_logging_local
 
 
 def main():
@@ -41,12 +41,12 @@ def main():
     tf.logging.info(tf.gfile.ListDirectory(cfg.BERT_PRETRAINED_DIR))
 
     output_dir = str(Path(cfg.PREDICT_TFRECORDS).parent)
-    tf.gfile.MakeDirs(output_dir)
+    tf.compat.v1.gfile.MakeDirs(output_dir)
 
     tf.logging.info('***** TFRecords output directory: {} *****'.format(output_dir))
 
     """ Convert all the input files to TensorFlow Records and save to GCS"""
-    glob_list = tf.gfile.Glob(args['<gcs_input_path>'])
+    glob_list = tf.compat.v1.gfile.Glob(args['<gcs_input_path>'])
 
     t0 = datetime.datetime.now()
 
@@ -56,14 +56,9 @@ def main():
         gcs_output_file = os.path.join(output_dir, stem + f'_{cfg.BERT_MODEL}_{cfg.MAX_SEQUENCE_LENGTH}.tf_record')
         gcs_output_file_ids = gcs_output_file + '.ids.txt'
 
-        existing_files = tf.gfile.ListDirectory(output_dir)
+        existing_files = tf.compat.v1.gfile.ListDirectory(output_dir)
         if os.path.basename(gcs_output_file) in existing_files:
             tf.logging.info(f"Output file {gcs_output_file} already exists. Skipping input from {file}.")
-            continue
-
-        # should no longer need the line below, but keeping for now just in case the new method above doesn't work.
-        if tf.gfile.Exists(gcs_output_file):
-            tf.logging.warn(f"Output file {gcs_output_file} already exists. Skipping input from {file}.")
             continue
 
         tf.logging.info(f"Reading from {file}.")

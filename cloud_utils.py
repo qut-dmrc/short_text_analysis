@@ -1,5 +1,4 @@
 import csv
-import logging
 import os
 from io import StringIO, BytesIO
 
@@ -7,9 +6,11 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
 
+import logging
+logger = logging.getLogger(__name__)
 
 def save_df_gcs(gcs_path, df, save_csv=True):
-    tf.logging.info('saving dataframe to GCS: '.format(gcs_path))
+    logger.info('saving dataframe to GCS: '.format(gcs_path))
     with file_io.FileIO(gcs_path, mode='w') as file_stream:
         if save_csv:
             df.to_csv(file_stream, encoding='utf-8', quoting=csv.QUOTE_ALL)
@@ -17,12 +18,12 @@ def save_df_gcs(gcs_path, df, save_csv=True):
             df.to_json(file_stream, encoding='utf-8', orient='records', lines=True)
 
 
-def read_df_gcs(gcs_path, list_of_all_fields=None, header_rows=0):
+def read_df_gcs(gcs_path, list_of_all_fields=None, header_rows=None):
     """ Read the input data from Google Cloud Storage
     :param gcs_path: a single input file
     :param list_of_all_fields: all of the fields to read from the file (only if CSV)
     """
-    tf.logging.info('downloading file from {}'.format(gcs_path))
+    logger.info('downloading file from {}'.format(gcs_path))
 
     gzip = (gcs_path[-2:] == 'gz')
     json = (gcs_path[-4:] == 'json' or gcs_path[-7:] == 'json.gz')
@@ -91,5 +92,5 @@ def setup_logging_local(log_file_name, verbose=False):
     # Set tensorflow verbosity
     if verbose:
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'  # or any {'0', '1', '2'}
-        tf.logging.set_verbosity(tf.logging.DEBUG)
-        tf.logging.debug("Set log level to debug.")
+        logger.set_verbosity(logger.DEBUG)
+        logger.debug("Set log level to debug.")
